@@ -26,7 +26,7 @@ and redacted: key, tokens and generated passwords are replaced by `<redacted>`).
 * The key is read only from the `SIMPLEAPI_KEY` environment variable and is never written anywhere.
 * Test passwords are generated at run time, never stored.
 * The key's free tier holds 25 users and the demo key is shared. The script registers at most 6 users
-  per run (`MAX_USERS`, normally 5; 1 with `--lockout-only`), uses
+  per run (`MAX_USERS`, normally 4; 1 with `--lockout-only`), uses
   `simpleapi-sample-apps+<random>@agentmail.to` addresses, and deletes each one with
   `DELETE /api/users/me` at the end (also on errors). If a delete fails it says so, so you can clean up.
 * Requests are paced to at most one per second, and the script waits out the rate-limit window (`X-RateLimit-Remaining` low) or a `429 Rate limit exceeded` (`Retry-After`) instead of failing; `--ratelimit-only` runs just the rate-limit test (no users).

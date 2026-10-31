@@ -434,8 +434,8 @@ def run(args):
     r = call("PUT", "/api/users/me", {"password": "", "current_password": a_pw}, token=tokA1)
     status_check("M5d", "PUT /me empty password", "422", r, 422, note="message=" + repr(r.message))
     r = call("GET", "/api/users/me", token=tokA1)
-    check("M5e", "...and nothing was changed by those rejected updates", "name still Alice Live", r,
-          r.status == 200 and (r.json or {}).get("name") == "Alice Live", note="body=" + redact(r.text)[:120])
+    check("M5e", "...and nothing was changed by those rejected updates", "name still the one M4 set", r,
+          r.status == 200 and (r.json or {}).get("name") == "Zoë 😀 ñ <b>x</b> & \"q\"", note="body=" + redact(r.text)[:120])
     r = call("PUT", "/api/users/me", {}, token=tokA1)
     check("M7", "PUT /me empty body", "200 unchanged or 422", r, r.status in (200, 422), note="status=" + str(r.status))
     r = call("PUT", "/api/users/me", {"name": "Alice Live"}, token=tokA1)
