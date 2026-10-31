@@ -25,10 +25,15 @@ http.Response _json(int status, Object body) =>
 
 /// The app wired to a mock HTTP client that records every request.
 class Harness {
-  Harness(http.Response Function(http.Request) handler, {String? key = 'test-key'})
-      : store = MemoryKeyStore(key) {
+  Harness(
+    http.Response Function(http.Request) handler, {
+    String buildKey = 'test-key',
+    String? ownKey,
+  }) : store = MemoryKeyStore(ownKey) {
     controller = AppController(
       keyStore: store,
+      buildKey: buildKey,
+      urlOpener: opened.add,
       client: MockClient((request) async {
         requests.add(request);
         return handler(request);
@@ -39,6 +44,7 @@ class Harness {
   final MemoryKeyStore store;
   late final AppController controller;
   final requests = <http.Request>[];
+  final opened = <String>[];
 
   Future<void> pump(WidgetTester tester) async {
     tester.view.physicalSize = const Size(1000, 3000);
@@ -66,16 +72,132 @@ Future<void> _submitLogin(WidgetTester tester, {String password = 'pw-12345678'}
 }
 
 void main() {
-  testWidgets('without a key the key screen is shown and the key is saved', (tester) async {
-    final h = Harness((_) => _json(200, {}), key: null);
+  // ---- Keys ----------------------------------------------------------------
+
+  testWidgets('with a build key the app opens on log in and uses that key', (tester) async {
+    final h = Harness((_) => _json(401, {'message': 'Invalid credentials'}), buildKey: 'build-key');
     await h.pump(tester);
 
-    expect(find.text('Your SimpleApi key'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, 'Log in'), findsOneWidget);
+    expect(find.text('This demo has no key configured'), findsNothing);
+    expect(h.requests, isEmpty);
+
+    await _submitLogin(tester);
+    expect(h.requests.single.url.queryParameters['apikey'], 'build-key');
+  });
+
+  testWidgets('with no key it says so, offers a key link and makes no API calls', (tester) async {
+    final h = Harness((_) => _json(200, {}), buildKey: '');
+    await h.pump(tester);
+
+    expect(find.text('This demo has no key configured'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, 'Log in'), findsNothing);
+    await _tapText(tester, 'Get a free key');
+
+    expect(h.opened, ['https://keys.simpleapi.dev/?product=auth']);
+    expect(h.requests, isEmpty);
+  });
+
+  testWidgets('a valid own key is checked, stored and overrides the build key', (tester) async {
+    // 422 on an empty login body means the key was accepted.
+    final h = Harness((r) {
+      if (r.url.queryParameters['apikey'] == 'my-key' &&
+          r.url.path == '/api/users/login' &&
+          r.body == '{}') {
+        return _json(422, {'message': 'The email field is required.'});
+      }
+      return _json(401, {'message': 'Invalid credentials'});
+    }, buildKey: 'build-key');
+    await h.pump(tester);
+
+    await _tapText(tester, 'Settings');
     await _type(tester, 'API key', '  my-key  ');
     await _tapText(tester, 'Save key');
 
     expect(h.store.read(), 'my-key');
+    expect(h.controller.apiKey, 'my-key');
+    expect(h.requests.single.url.queryParameters['apikey'], 'my-key');
     expect(find.widgetWithText(FilledButton, 'Log in'), findsOneWidget);
+
+    await _submitLogin(tester);
+    expect(h.requests.last.url.queryParameters['apikey'], 'my-key');
+  });
+
+  testWidgets('a rejected key is not stored', (tester) async {
+    final h = Harness(
+        (_) => _json(401, {'message': 'Unauthorized.  Invalid apikey detected [nope].'}),
+        buildKey: 'build-key');
+    await h.pump(tester);
+
+    await _tapText(tester, 'Settings');
+    await _type(tester, 'API key', 'nope');
+    await _tapText(tester, 'Save key');
+
+    expect(find.textContaining('API key was not accepted'), findsOneWidget);
+    expect(h.store.read(), isNull);
+    expect(h.controller.apiKey, 'build-key');
+  });
+
+  testWidgets('go back to the demo key clears the own key', (tester) async {
+    final h = Harness((_) => _json(401, {'message': 'Invalid credentials'}),
+        buildKey: 'build-key', ownKey: 'my-key');
+    await h.pump(tester);
+    expect(h.controller.apiKey, 'my-key');
+
+    await _tapText(tester, 'Settings');
+    await _tapText(tester, 'Go back to the demo key');
+
+    expect(h.store.read(), isNull);
+    expect(h.controller.apiKey, 'build-key');
+    expect(find.widgetWithText(FilledButton, 'Log in'), findsOneWidget);
+    await _submitLogin(tester);
+    expect(h.requests.single.url.queryParameters['apikey'], 'build-key');
+  });
+
+  // ---- User cap on the shared demo key ----------------------------------
+
+  Future<void> fillRegister(WidgetTester tester) async {
+    await _tapText(tester, 'Create an account');
+    await _type(tester, 'Name', 'Test User');
+    await _type(tester, 'Email', 'test@example.test');
+    await _type(tester, 'Password (8 to 72 characters)', 'pw-12345678');
+    await tester.tap(find.widgetWithText(FilledButton, 'Create account'));
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('register shows a public-accounts notice on the demo key', (tester) async {
+    final h = Harness((_) => _json(201, _session));
+    await h.pump(tester);
+    await _tapText(tester, 'Create an account');
+    expect(find.textContaining('shared and public'), findsOneWidget);
+  });
+
+  testWidgets('no shared-account notice when using your own key', (tester) async {
+    final h = Harness((_) => _json(201, _session), ownKey: 'my-key');
+    await h.pump(tester);
+    await _tapText(tester, 'Create an account');
+    expect(find.textContaining('shared and public'), findsNothing);
+  });
+
+  testWidgets('user cap on the demo key says the demo is full', (tester) async {
+    final h = Harness((_) =>
+        _json(403, {'message': 'Maximum number of users for a Basic account reached'}));
+    await h.pump(tester);
+    await fillRegister(tester);
+
+    expect(find.textContaining('The demo is full'), findsOneWidget);
+    expect(find.textContaining('under Settings'), findsOneWidget);
+  });
+
+  testWidgets('user cap on your own key keeps the plain 25 users message', (tester) async {
+    final h = Harness((_) =>
+        _json(403, {'message': 'Maximum number of users for a Basic account reached'}),
+        ownKey: 'my-key');
+    await h.pump(tester);
+    await fillRegister(tester);
+
+    expect(find.textContaining('The demo is full'), findsNothing);
+    expect(find.textContaining('maximum of 25 users'), findsOneWidget);
   });
 
   testWidgets('login success shows the profile loaded from /me', (tester) async {

@@ -56,6 +56,7 @@ class _RegisterScreenState extends State<RegisterScreen> with ActionState {
             title: 'Register',
             subtitle: 'The free tier allows 25 users per key.',
             children: [
+              if (app.usingDemoKey) const DemoNotice(),
               StatusText(error: error, info: info),
               field(_name, 'Name', validator: notEmpty),
               field(_email, 'Email', keyboard: TextInputType.emailAddress, validator: notEmpty),

@@ -4,6 +4,7 @@ import '../app_controller.dart';
 import '../widgets.dart';
 import 'register_screen.dart';
 import 'reset_screen.dart';
+import 'settings_screen.dart';
 
 /// POST /api/users/login
 class LoginScreen extends StatefulWidget {
@@ -48,7 +49,8 @@ class _LoginScreenState extends State<LoginScreen> with ActionState {
           key: _form,
           child: Section(
             title: 'Log in',
-            subtitle: 'After 5 wrong passwords an email is locked for 15 minutes.',
+            subtitle: 'After 5 wrong passwords an email is locked for 15 minutes.'
+                '${app.usingDemoKey ? ' This demo shares one key, so accounts are public.' : ''}',
             children: [
               StatusText(error: error ?? app.notice, info: info),
               field(_email, 'Email', keyboard: TextInputType.emailAddress, validator: notEmpty),
@@ -74,7 +76,11 @@ class _LoginScreenState extends State<LoginScreen> with ActionState {
                   .push(MaterialPageRoute<void>(builder: (_) => ResetScreen(app: app))),
               child: const Text('Forgot password?'),
             ),
-            TextButton(onPressed: app.forgetKey, child: const Text('Change API key')),
+            TextButton(
+              onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(builder: (_) => SettingsScreen(app: app))),
+              child: const Text('Settings'),
+            ),
           ],
         ),
       ],

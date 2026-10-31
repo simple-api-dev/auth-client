@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import 'app_controller.dart';
 import 'key_store.dart';
 import 'screens/home_screen.dart';
-import 'screens/key_screen.dart';
 import 'screens/login_screen.dart';
+import 'screens/no_key_screen.dart';
 
 void main() {
   runApp(AuthClientApp(controller: AppController(keyStore: createKeyStore())));
@@ -25,7 +25,7 @@ class AuthClientApp extends StatelessWidget {
       home: ListenableBuilder(
         listenable: controller,
         builder: (context, _) {
-          if (!controller.hasKey) return KeyScreen(app: controller);
+          if (!controller.hasKey) return NoKeyScreen(app: controller);
           if (!controller.loggedIn) return LoginScreen(app: controller);
           return HomeScreen(app: controller);
         },

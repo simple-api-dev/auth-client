@@ -71,6 +71,12 @@ class ApiException implements Exception {
 
   bool get isNetworkError => status == 0;
 
+  /// The key already has the maximum number of users. The Swagger docs list
+  /// 403 on POST /api/users/register as "Maximum number of users for a Basic
+  /// account reached" (Basic accounts are limited to 25 users). No other
+  /// outcome of register uses 403.
+  bool get isUserCapReached => status == 403 && path.endsWith('/users/register');
+
   /// 401 caused by a missing or unknown apikey.
   bool get isBadKey =>
       status == 401 && serverMessage.toLowerCase().contains('apikey');
@@ -94,7 +100,6 @@ class ApiException implements Exception {
       return 'Your session has ended. Please log in again.';
     }
     final login = path.endsWith('/users/login');
-    final register = path.endsWith('/users/register');
     final sendCode = path.endsWith('/email/send-code');
     final forgot = path.endsWith('/users/forgot');
     final codeCheck = path.endsWith('/users/reset') || path.endsWith('/email/verify');
@@ -105,7 +110,7 @@ class ApiException implements Exception {
         return 'Wrong email or password.';
       case 403 when login:
         return 'This account has been disabled.';
-      case 403 when register:
+      case 403 when isUserCapReached:
         return 'This key already has the maximum of 25 users on the free tier. Delete an account or use another key.';
       case 403:
         return 'The current password is wrong.';
@@ -145,6 +150,26 @@ class AuthApi {
   String? token;
 
   // ---- Public (no token) ---------------------------------------------------
+
+  /// Checks that the key is accepted, without creating anything.
+  ///
+  /// The API has no dedicated "check key" route, but it checks the apikey
+  /// before anything else. So POST /api/users/login with an empty body
+  /// answers 401 ("...valid apikey...") for a bad key, and 422 (validation
+  /// failed) for a good one. Throws [ApiException] when the key is rejected
+  /// or the API cannot be reached.
+  Future<void> checkKey() async {
+    try {
+      await _send('POST', '/api/users/login', body: <String, dynamic>{});
+    } on ApiException catch (e) {
+      if (e.status == 422) return;
+      if (e.status == 401 && !e.isBadKey) {
+        // A 401 that is not about the key still means the key got through.
+        return;
+      }
+      rethrow;
+    }
+  }
 
   /// POST /api/users/register
   /// Creates a user and logs them in. 201 returns a Session.
