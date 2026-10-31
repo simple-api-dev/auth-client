@@ -87,6 +87,33 @@ String? validPassword(String? value) {
   return null;
 }
 
+const demoFullMessage = 'The demo is full: its shared key has reached the free '
+    'limit of 25 users. Use your own free key under Settings to try registering.';
+
+/// Shown on the register screen while the shared demo key is in use.
+class DemoNotice extends StatelessWidget {
+  const DemoNotice({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: scheme.secondaryContainer,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        'Demo accounts are shared and public. Do not use a real password or '
+        'any private details.',
+        style: TextStyle(color: scheme.onSecondaryContainer),
+      ),
+    );
+  }
+}
+
 /// Shows the result of the last action: an error in red, otherwise a note.
 class StatusText extends StatelessWidget {
   const StatusText({super.key, this.error, this.info});
@@ -131,7 +158,10 @@ mixin ActionState<T extends StatefulWidget> on State<T> {
       return true;
     } on ApiException catch (e) {
       if (e.isBadSession) app.signOutLocal(notice: e.plain);
-      if (mounted) setState(() => error = e.plain);
+      // The shared demo key holds only 25 users. Once they are used up nobody
+      // can register, so say so and point to the way out.
+      final text = e.isUserCapReached && app.usingDemoKey ? demoFullMessage : e.plain;
+      if (mounted) setState(() => error = text);
       return false;
     } finally {
       if (mounted) setState(() => busy = false);

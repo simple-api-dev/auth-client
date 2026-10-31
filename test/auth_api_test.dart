@@ -163,6 +163,28 @@ void main() {
       expect(e.plain, contains('API key was not accepted'));
     });
 
+    test('register 403 is the user cap, other 403s are not', () async {
+      final cap = await _fails(
+          (a) => a.register(name: 'n', email: 'e@example.test', password: 'pw-12345678'), 403,
+          {'message': 'Maximum number of users for a Basic account reached'});
+      expect(cap.isUserCapReached, isTrue);
+      final other = await _fails((a) => a.updateMe(name: 'x'), 403, {'message': 'x'}, token: 't');
+      expect(other.isUserCapReached, isFalse);
+    });
+
+    test('checkKey accepts a key when login answers 422', () async {
+      final t = _api((_) => _json(422, {'message': 'The email field is required.'}));
+      await t.api.checkKey();
+      expect(t.seen.single.url.path, '/api/users/login');
+      expect(t.seen.single.url.queryParameters['apikey'], 'test-key');
+    });
+
+    test('checkKey throws when the key is rejected', () async {
+      final t = _api((_) => _json(401, {'message': 'Unauthorized.  Invalid apikey detected [x].'}));
+      await expectLater(t.api.checkKey(),
+          throwsA(isA<ApiException>().having((e) => e.isBadKey, 'isBadKey', isTrue)));
+    });
+
     test('expired token is a bad session', () async {
       final e = await _fails((a) => a.me(), 401, {'message': 'Unauthenticated.'}, token: 'old');
       expect(e.isBadSession, isTrue);

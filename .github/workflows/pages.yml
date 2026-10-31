@@ -35,7 +35,14 @@ jobs:
       - run: flutter test
 
       # The app is served from https://simple-api-dev.github.io/auth-client/
-      - run: flutter build web --release --base-href /auth-client/
+      # SIMPLEAPI_KEY is a repository VARIABLE (Settings > Secrets and
+      # variables > Actions > Variables). Whatever is passed with
+      # --dart-define is compiled into the public JavaScript, so it must be a
+      # dedicated throwaway demo key. If the variable is not set the site
+      # builds in "no key" mode and makes no API calls.
+      - run: >
+          flutter build web --release --base-href /auth-client/
+          --dart-define=SIMPLEAPI_KEY=${{ vars.SIMPLEAPI_KEY }}
 
       - uses: actions/upload-pages-artifact@v3
         with:
