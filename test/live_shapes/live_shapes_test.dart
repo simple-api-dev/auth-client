@@ -13,16 +13,19 @@ const _user =
     r'{"id":3,"name":"Alice Live","email":"simpleapi-sample-apps+099e2e8586@agentmail.to",'
     r'"email_verified":false,"admin":false,"enabled":true,"created_at":"2026-10-31T20:40:37.000000Z"}';
 
-AuthApi _api(int status, String body, {String? token = 'placeholder-token'}) => AuthApi(
+AuthApi _api(int status, String body,
+        {String? token = 'placeholder-token', Map<String, String> headers = const {}}) =>
+    AuthApi(
       apiKey: 'test-key',
       token: token,
       client: MockClient((_) async =>
-          http.Response(body, status, headers: {'content-type': 'application/json'})),
+          http.Response(body, status, headers: {'content-type': 'application/json', ...headers})),
     );
 
-Future<ApiException> _fail(Future<Object?> Function(AuthApi) call, int status, String body) async {
+Future<ApiException> _fail(Future<Object?> Function(AuthApi) call, int status, String body,
+    {Map<String, String> headers = const {}}) async {
   try {
-    await call(_api(status, body));
+    await call(_api(status, body, headers: headers));
   } on ApiException catch (e) {
     return e;
   }
@@ -49,8 +52,8 @@ void main() {
       expect(u.createdAt, '2026-10-31T20:40:37.000000Z');
     });
 
-    test('PUT /me may return an empty name (API accepts "" on update)', () async {
-      final u = await _api(200, _user.replaceFirst('Alice Live', '')).updateMe(name: '');
+    test('a stored empty name (accounts from before the API fix) still parses', () async {
+      final u = await _api(200, _user.replaceFirst('Alice Live', '')).me();
       expect(u.name, '');
     });
 
@@ -225,8 +228,42 @@ void main() {
       final e = await _fail((a) => a.login(email: 'a@example.test', password: 'x'), 429,
           '{"message":"Too many failed logins for this email.  Please try again in a few minutes."}');
       expect(e.isBadSession, isFalse);
+      expect(e.isRateLimited, isFalse);
+      expect(e.retryAfter, isNull);
       expect(e.plain, startsWith('Too many failed log-in attempts.'));
       expect(e.plain, contains('15 minutes'));
+    });
+
+    test('login lockout, new text + Retry-After header', () async {
+      final e = await _fail((a) => a.login(email: 'a@example.test', password: 'x'), 429,
+          '{"message":"Too many failed logins for this email.  Please try again in 15 minutes."}',
+          headers: {'retry-after': '725'});
+      expect(e.retryAfter, const Duration(seconds: 725));
+      expect(e.isRateLimited, isFalse);
+      expect(e.plain, contains('locked for up to 15 minutes'));
+      expect(e.plain, endsWith('Try again in about 13 minutes.'));
+    });
+
+    test('general rate limit on login is not shown as a lockout', () async {
+      final e = await _fail((a) => a.login(email: 'a@example.test', password: 'x'), 429,
+          '{"message":"Rate limit exceeded: 20 requests per minute.  Please try again in 31 seconds."}',
+          headers: {'retry-after': '31', 'x-ratelimit-remaining': '0'});
+      expect(e.isRateLimited, isTrue);
+      expect(e.retryAfter, const Duration(seconds: 31));
+      expect(e.plain, 'Too many requests from your network. Try again in 31 seconds.');
+    });
+
+    test('rate limit without a readable Retry-After (browser did not expose it)', () async {
+      final e = await _fail((a) => a.me(), 429,
+          '{"message":"Rate limit exceeded: 20 requests per minute.  Please try again in 31 seconds."}');
+      expect(e.retryAfter, isNull);
+      expect(e.plain, 'Too many requests from your network. Wait a moment and try again.');
+    });
+
+    test('garbage Retry-After is ignored', () async {
+      final e = await _fail((a) => a.me(), 429, '{"message":"Rate limit exceeded: 20 requests per minute."}',
+          headers: {'retry-after': 'Wed, 21 Oct 2026 07:28:00 GMT'});
+      expect(e.retryAfter, isNull);
     });
 
     test('send-code one-per-minute', () async {
@@ -244,22 +281,83 @@ void main() {
     });
   });
 
-  group('checkKey() (POST /login with an empty body)', () {
-    test('good key: real 422 means the key is accepted', () async {
-      await _api(422, '{"message":"The email field is required.  The password field is required."}')
-          .checkKey();
+  group('checkKey() (GET /api/keys/check)', () {
+    test('good key: 200 {"valid":true}', () async {
+      await _api(200, '{"valid":true}').checkKey();
     });
 
-    test('bad key: real 401 is rethrown as a bad key', () async {
+    test('bad key, message without the key text (after the API fix)', () async {
+      final e = await _fail((a) => a.checkKey(), 401,
+          r'{"message":"Unauthorized.  Invalid apikey. Register for a free apikey at https:\/\/keys.simpleapi.dev using product URL https:\/\/auth.simpleapi.dev."}');
+      expect(e.isBadKey, isTrue);
+      expect(e.plain, startsWith('The API key was not accepted'));
+    });
+
+    test('bad key, current live message that echoes the key', () async {
       final e = await _fail((a) => a.checkKey(), 401,
           r'{"message":"Unauthorized.  Invalid apikey detected [00000000-0000-0000-0000-000000000000]. Register for a free apikey at https:\/\/keys.simpleapi.dev using product URL https:\/\/auth.simpleapi.dev."}');
       expect(e.isBadKey, isTrue);
+    });
+
+    test('a 401 from keys/check is a bad key whatever the wording', () async {
+      final e = await _fail((a) => a.checkKey(), 401, '{"message":"Nope."}');
+      expect(e.isBadKey, isTrue);
+    });
+
+    test('rate limited while checking', () async {
+      final e = await _fail((a) => a.checkKey(), 429,
+          '{"message":"Rate limit exceeded: 20 requests per minute.  Please try again in 9 seconds."}',
+          headers: {'retry-after': '9'});
+      expect(e.isBadKey, isFalse);
+      expect(e.plain, contains('9 seconds'));
     });
 
     test('missing key: real 401 is rethrown as a bad key', () async {
       final e = await _fail((a) => a.checkKey(), 401,
           r'{"message":"Unauthorized.  Please provide a valid apikey. Register for a free apikey at https:\/\/keys.simpleapi.dev using product URL https:\/\/auth.simpleapi.dev."}');
       expect(e.isBadKey, isTrue);
+    });
+  });
+
+  group('new live validation answers', () {
+    test('malformed JSON -> 400, shown plainly, never taken for a code error or a bad key', () async {
+      final e = await _fail((a) => a.updateMe(name: 'x'), 400,
+          '{"message":"Malformed JSON body.  Send a valid JSON object."}');
+      expect(e.isMalformedJson, isTrue);
+      expect(e.isBadKey, isFalse);
+      expect(e.plain, contains('malformed JSON'));
+    });
+
+    test('malformed JSON on the code routes is still malformed JSON, not "wrong code"', () async {
+      final e = await _fail((a) => a.verifyEmail('123456'), 400,
+          '{"message":"Malformed JSON body.  Send a valid JSON object."}');
+      expect(e.plain, isNot(contains('wrong or has expired')));
+    });
+
+    test('wrong code is still a wrong code', () async {
+      final e = await _fail((a) => a.verifyEmail('123456'), 400,
+          '{"message":"Invalid or expired verification code."}');
+      expect(e.isMalformedJson, isFalse);
+      expect(e.plain, startsWith('That code is wrong or has expired'));
+    });
+
+    test('register with a@b -> 422 message is shown', () async {
+      final e = await _fail((a) => a.register(name: 'X', email: 'a@b', password: 'x' * 8), 422,
+          '{"message":"The email must be a valid email address."}');
+      expect(e.plain, 'The email must be a valid email address.');
+    });
+
+    test('change email to a@b -> 422 message is shown', () async {
+      final e = await _fail(
+          (a) => a.updateMe(email: 'a@b', currentPassword: 'x' * 8), 422,
+          '{"message":"The email must be a valid email address."}');
+      expect(e.plain, 'The email must be a valid email address.');
+    });
+
+    test('empty name on update -> 422 message is shown', () async {
+      final e = await _fail((a) => a.updateMe(name: ''), 422,
+          '{"message":"The name field is required."}');
+      expect(e.plain, 'The name field is required.');
     });
   });
 

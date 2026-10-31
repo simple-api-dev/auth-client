@@ -7,7 +7,7 @@ Safety rules built in:
   * the key is read ONLY from the SIMPLEAPI_KEY environment variable;
   * every secret (key, tokens, generated passwords) is redacted from all output;
   * at most MAX_USERS users are ever registered; each is deleted at the end;
-  * requests are paced (>= 1.1 s apart) and 429 "Throttle" answers are backed off.
+  * requests are paced (>= 1.0 s apart) and 429 rate-limit answers are backed off.
 Standard library only.
 """
 import argparse
@@ -23,7 +23,7 @@ import urllib.request
 
 BASE = os.environ.get("SIMPLEAPI_BASE", "https://auth.simpleapi.dev")
 MAX_USERS = 6
-PACE = 1.1
+PACE = 1.0
 ORIGIN = "https://simple-api-dev.github.io"
 KEY = os.environ.get("SIMPLEAPI_KEY", "").strip()
 
@@ -33,6 +33,8 @@ transcript = []   # redacted request/response log
 calls = 0
 last_call = 0.0
 throttles = []    # observed generic throttle events
+rl_state = {"remaining": None, "reset": None}   # last X-RateLimit-* seen, to avoid hitting the limit by accident
+rl_log = []       # (call number, status, remaining, reset) for every call
 users = {}        # label -> dict(email, password, tokens[])
 registered = 0
 
@@ -88,13 +90,21 @@ class Abort(Exception):
 
 
 def call(method, path, body=None, token=None, key=True, accept=True, raw=None,
-         extra_headers=None, query_extra="", expect_lockout=False):
+         extra_headers=None, query_extra="", expect_lockout=False, no_wait=False, retry_rate_limit=True):
     """One paced HTTP call. Returns Resp. Backs off on generic throttling."""
     global calls, last_call
     for attempt in range(4):
         wait = PACE - (time.time() - last_call)
         if wait > 0:
             time.sleep(wait)
+        # Stay under the documented per-IP limit: when the last answer said at most 1 request is left in the
+        # window, wait for the window to end instead of provoking a 429 (the dedicated RL test provokes one on purpose).
+        if not no_wait and rl_state["remaining"] is not None and rl_state["remaining"] <= 1 \
+                and rl_state["reset"] and rl_state["reset"] > time.time():
+            sl = rl_state["reset"] - time.time() + 1
+            print(f"  . rate-limit window nearly used; waiting {sl:.0f}s", flush=True)
+            time.sleep(sl)
+            rl_state["remaining"] = None
         url = BASE + path + ("?apikey=" + KEY if key else "?") + query_extra
         url = url.rstrip("?")
         headers = {}
@@ -124,11 +134,17 @@ def call(method, path, body=None, token=None, key=True, accept=True, raw=None,
             "status": resp.status, "response_body": redact(resp.text)[:1500],
             "headers": {k: redact(v) for k, v in resp.headers.items()
                         if k in ("retry-after", "x-ratelimit-limit", "x-ratelimit-remaining",
-                                 "content-type", "access-control-allow-origin",
+                                 "x-ratelimit-reset", "content-type", "access-control-allow-origin",
                                  "access-control-allow-methods", "access-control-allow-headers",
                                  "access-control-max-age", "vary")},
         })
-        throttled = resp.status == 429 and "throttle" in resp.message.lower()
+        h = resp.headers
+        rem = int(h["x-ratelimit-remaining"]) if h.get("x-ratelimit-remaining", "").lstrip("-").isdigit() else None
+        rst = int(h["x-ratelimit-reset"]) if h.get("x-ratelimit-reset", "").isdigit() else None
+        rl_log.append((calls, resp.status, rem, rst, path))
+        rl_state["remaining"], rl_state["reset"] = rem, rst
+        msg = resp.message.lower()
+        throttled = resp.status == 429 and retry_rate_limit and ("throttle" in msg or msg.startswith("rate limit"))
         if throttled:
             ra = resp.headers.get("retry-after", "")
             throttles.append({"after_calls": calls, "path": path, "retry_after": ra,
@@ -250,19 +266,78 @@ def key_checks():
     check("C2", "CORS preflight for DELETE /me", "2xx and DELETE allowed", r,
           r.status in (200, 204) and ("DELETE" in am or am.strip() == "*"), note=f"allow-methods={am!r}")
 
-    # AuthApi.checkKey(): POST /login with an EMPTY body; 422 = key accepted, 401 "apikey" = rejected
+    # AuthApi.checkKey(): GET /api/keys/check; 200 {"valid": true} = accepted, 401 = rejected
+    r = call("GET", "/api/keys/check")
+    status_check("K6", "checkKey(): GET /keys/check with a GOOD key", "200 {\"valid\":true}", r, 200,
+                 extra=r.json == {"valid": True}, note="body=" + redact(r.text))
+    r = call("GET", "/api/keys/check", key=False, query_extra="apikey=00000000-0000-0000-0000-000000000000")
+    status_check("K7", "checkKey(): GET /keys/check with a BAD key", "401 mentioning apikey", r, 401,
+                 extra="apikey" in r.message.lower(), note="message=" + repr(r.message))
+    r = call("GET", "/api/keys/check", key=False)
+    status_check("K8", "checkKey(): GET /keys/check with NO key", "401 mentioning apikey", r, 401,
+                 extra="apikey" in r.message.lower(), note="message=" + repr(r.message))
+    # API fix not deployed yet when this was written: the 401 must not echo the key text it was sent
+    probe = "00000000-0000-0000-0000-000000000000"
+    r = call("GET", "/api/keys/check", key=False, query_extra="apikey=" + probe)
+    status_check("K9", "invalid apikey 401 does not echo the key text", "401, key not in message", r, 401,
+                 extra=probe not in r.text, note="message=" + repr(r.message))
+    r = call("POST", "/api/users/login", raw="{not json")
+    status_check("K10", "malformed JSON with a GOOD key", "400", r, 400, note="message=" + repr(r.message))
+    r = call("POST", "/api/users/login", raw="{not json", key=False, query_extra="apikey=" + probe)
+    status_check("K11", "malformed JSON with a BAD key (key is checked first)", "401", r, 401, note="message=" + repr(r.message))
+    r = call("POST", "/api/users/login", raw='"just a string"')
+    status_check("K12", "valid JSON that is not an object", "400", r, 400, note="message=" + repr(r.message))
     r = call("POST", "/api/users/login", {})
-    status_check("K6", "checkKey(): login with {} and a GOOD key", "422 (key accepted, nothing created)", r, 422,
-                 note="message=" + repr(r.message))
-    r = call("POST", "/api/users/login", {}, key=False, query_extra="apikey=00000000-0000-0000-0000-000000000000")
-    status_check("K7", "checkKey(): login with {} and a BAD key", "401 mentioning apikey", r, 401,
-                 extra="apikey" in r.message.lower(), note="message=" + repr(r.message))
-    r = call("POST", "/api/users/login", {}, key=False)
-    status_check("K8", "checkKey(): login with {} and NO key", "401 mentioning apikey", r, 401,
-                 extra="apikey" in r.message.lower(), note="message=" + repr(r.message))
+    status_check("K13", "empty JSON object is still validated", "422", r, 422, note="message=" + repr(r.message))
+
+
+def rate_limit_test():
+    """Documented: 20 requests/minute per client IP, fixed 60 s window, X-RateLimit-* on every response, 429 + Retry-After
+    past the limit. Starts right after a window reset, then sends GET /api/keys/check once a second (creates no users)."""
+    r = call("GET", "/api/keys/check", no_wait=True)
+    reset = rl_state["reset"]
+    if reset and reset > time.time():
+        sl = reset - time.time() + 1.5
+        print(f"  . waiting {sl:.0f}s for a fresh rate-limit window", flush=True)
+        time.sleep(sl)
+    seq = []
+    first429 = None
+    for i in range(1, 24):
+        r = call("GET", "/api/keys/check", no_wait=True, retry_rate_limit=False)
+        h = r.headers
+        seq.append((r.status, h.get("x-ratelimit-limit"), h.get("x-ratelimit-remaining"), h.get("x-ratelimit-reset")))
+        if r.status == 429:
+            first429 = (i, r)
+            break
+    ok200 = [x for x in seq if x[0] == 200]
+    lim = {x[1] for x in seq}
+    check("RL1", "X-RateLimit-Limit and -Reset present on every response", "Limit=20, Reset a unix time", str(seq[:3]) + " ...",
+          lim == {"20"} and all(x[3] and x[3].isdigit() for x in seq), note="limits=" + str(lim))
+    rems = [int(x[2]) for x in ok200 if (x[2] or "").lstrip("-").isdigit()]
+    resets = {x[3] for x in ok200}
+    mono = all(b <= a for a, b in zip(rems, rems[1:]))
+    check("RL2", "X-RateLimit-Remaining only goes down within a window", "non-increasing, one Reset value", f"remaining={rems} resets={sorted(resets)}",
+          mono and len(resets) == 1, note="counts down by exactly 1 each time: " + str(all(a - b == 1 for a, b in zip(rems, rems[1:]))))
+    if first429:
+        i, rr = first429
+        check("RL3", "a 429 fires at the documented limit (20/min)", "first 429 on request 21 of the window", f"429 on request {i}: {rr.short()[:160]}",
+              i == 21 and len(ok200) == 20, note=f"headers retry-after={rr.headers.get('retry-after')} limit={rr.headers.get('x-ratelimit-limit')} remaining={rr.headers.get('x-ratelimit-remaining')} reset={rr.headers.get('x-ratelimit-reset')}")
+        check("RL4", "429 is JSON with message and Retry-After 1..60", "json message, Retry-After seconds", rr,
+              isinstance(rr.json, dict) and "message" in rr.json and rr.headers.get("retry-after", "").isdigit()
+              and 1 <= int(rr.headers["retry-after"]) <= 60, note="message=" + repr(rr.message))
+        wait = int(rr.headers.get("retry-after", "60")) + 1
+        print(f"  . sleeping {wait}s until the window ends", flush=True)
+        time.sleep(wait)
+        r = call("GET", "/api/keys/check", no_wait=True)
+        status_check("RL5", "allowed again after Retry-After", "200", r, 200)
+    else:
+        check("RL3", "a 429 fires at the documented limit (20/min)", "first 429 on request 21 of the window", f"no 429 in {len(seq)} requests", False,
+              note="statuses=" + str([x[0] for x in seq]))
+    rl_state["remaining"] = None
 
 
 def run(args):
+    rate_limit_test()
     key_checks()
     global registered
     print("\n== register ==", flush=True)
@@ -310,7 +385,7 @@ def run(args):
                                          "tokens": [t], "deleted": False}
         status_check(cid, what, "422", r, 422, note="message=" + repr(r.message) + " errors=" + json.dumps(r.json.get("errors") if isinstance(r.json, dict) else None))
     r = call("POST", "/api/users/register", raw="{not json")
-    status_check("R15", "register malformed JSON body", "4xx, not 5xx", r, 400, 422, note="message=" + repr(r.message))
+    status_check("R15", "register malformed JSON body", "400 (was 422 before the API fix)", r, 400, note="message=" + repr(r.message))
     r = call("POST", "/api/users/register", {"name": "X", "email": "bad", "password": "short"}, accept=False)
     check("R16", "validation error WITHOUT Accept header (the app always sends Accept)", "422 JSON",
           r, r.status == 422 and r.json is not None, note="status=" + str(r.status))
@@ -352,6 +427,15 @@ def run(args):
     status_check("M5", "PUT /me empty name", "422", r, 422, note="message=" + repr(r.message))
     r = call("PUT", "/api/users/me", {"name": "n" * 256}, token=tokA1)
     status_check("M6", "PUT /me name 256 chars", "422", r, 422)
+    r = call("PUT", "/api/users/me", {"name": "   "}, token=tokA1)
+    status_check("M5b", "PUT /me blank (spaces) name", "422", r, 422, note="message=" + repr(r.message))
+    r = call("PUT", "/api/users/me", {"name": None}, token=tokA1)
+    status_check("M5c", "PUT /me null name", "422", r, 422, note="message=" + repr(r.message))
+    r = call("PUT", "/api/users/me", {"password": "", "current_password": a_pw}, token=tokA1)
+    status_check("M5d", "PUT /me empty password", "422", r, 422, note="message=" + repr(r.message))
+    r = call("GET", "/api/users/me", token=tokA1)
+    check("M5e", "...and nothing was changed by those rejected updates", "name still Alice Live", r,
+          r.status == 200 and (r.json or {}).get("name") == "Alice Live", note="body=" + redact(r.text)[:120])
     r = call("PUT", "/api/users/me", {}, token=tokA1)
     check("M7", "PUT /me empty body", "200 unchanged or 422", r, r.status in (200, 422), note="status=" + str(r.status))
     r = call("PUT", "/api/users/me", {"name": "Alice Live"}, token=tokA1)
@@ -370,6 +454,8 @@ def run(args):
     status_check("M12", "PUT /me new password too short (7)", "422", r, 422, note="message=" + repr(r.message))
     r = call("PUT", "/api/users/me", {"email": "bad", "current_password": a_pw}, token=tokA1)
     status_check("M13", "PUT /me invalid new email", "422", r, 422, note="message=" + repr(r.message))
+    r = call("PUT", "/api/users/me", {"email": "a@b", "current_password": a_pw}, token=tokA1)
+    status_check("M13b", "PUT /me new email a@b (no dot in domain)", "422", r, 422, note="message=" + repr(r.message))
 
     # user B: used for the 409-on-update check and the logout tests
     r, b_email, b_pw = register("B", name="Bob Live")
@@ -525,8 +611,9 @@ def run(args):
         check("X2", "7 consecutive wrong passwords: lockout after 5", "401x5 then 429", f"statuses={seq}",
               seq[:5] == [401] * 5 and all(s == 429 for s in seq[5:]), note="statuses=" + str(seq))
         if lock is not None:
-            check("X3", "lockout response body / headers", "429 with message + Retry-After", lock,
-                  lock.status == 429, note="message=" + repr(lock.message) + " retry-after=" + repr(lock.headers.get("retry-after"))
+            check("X3", "lockout response body / headers", "429, Retry-After 1..900, message says 15 minutes", lock,
+                  lock.status == 429 and lock.headers.get("retry-after", "").isdigit()
+                  and 1 <= int(lock.headers["retry-after"]) <= 900 and "15 minutes" in lock.message, note="message=" + repr(lock.message) + " retry-after=" + repr(lock.headers.get("retry-after"))
                   + " body=" + redact(lock.text))
         rr = login(c_email, c_pw)
         status_check("X4", "RIGHT password while locked", "429 (still locked)", rr, 429, note="message=" + repr(rr.message))
@@ -611,7 +698,7 @@ def write_outputs(out):
             esc = lambda s: redact(s).replace("|", "\\|").replace("\n", " ")
             f.write(f"| {r['id']} | {esc(r['what'])} | {esc(r['expected'])} | {esc(r['actual'])[:200]} | {'PASS' if r['pass'] else 'FAIL'} | {esc(r['note'])[:400]} |\n")
     with open(os.path.join(out, "transcript.json"), "w") as f:
-        f.write(redact(json.dumps({"calls": calls, "throttles": throttles, "users_created": registered,
+        f.write(redact(json.dumps({"calls": calls, "throttles": throttles, "rate_limit_log": rl_log, "users_created": registered,
                                    "transcript": transcript}, indent=1)))
     print(f"wrote {out}/results.md and transcript.json (redacted)")
 
@@ -621,6 +708,7 @@ def main():
     ap.add_argument("--out", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "out"))
     ap.add_argument("--wait-lockout", action="store_true", help="also wait 15 min and test lockout expiry")
     ap.add_argument("--keys-only", action="store_true", help="only the checks that create no users (about 15 requests)")
+    ap.add_argument("--ratelimit-only", action="store_true", help="only the rate-limit test (about 1.5 minutes, no users)")
     ap.add_argument("--lockout-only", action="store_true",
                     help="only test lockout expiry with one throwaway user (takes ~16 minutes)")
     args = ap.parse_args()
@@ -629,7 +717,8 @@ def main():
     hide(KEY)
     started = time.time()
     try:
-        (run_lockout_expiry if args.lockout_only else (lambda a: key_checks()) if args.keys_only else run)(args)
+        (run_lockout_expiry if args.lockout_only else (lambda a: key_checks()) if args.keys_only
+         else (lambda a: rate_limit_test()) if args.ratelimit_only else run)(args)
     except Abort as e:
         print("ABORTED:", e)
     finally:

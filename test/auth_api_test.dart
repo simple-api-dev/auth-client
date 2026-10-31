@@ -153,7 +153,7 @@ void main() {
     test('lockout after too many attempts', () async {
       final e = await _fails((a) => a.login(email: 'a@example.test', password: 'x'), 429,
           {'message': 'Try again later'});
-      expect(e.plain, contains('locked for 15 minutes'));
+      expect(e.plain, contains('locked for up to 15 minutes'));
     });
 
     test('bad key', () async {
@@ -172,11 +172,13 @@ void main() {
       expect(other.isUserCapReached, isFalse);
     });
 
-    test('checkKey accepts a key when login answers 422', () async {
-      final t = _api((_) => _json(422, {'message': 'The email field is required.'}));
+    test('checkKey accepts a key when keys/check answers 200', () async {
+      final t = _api((_) => _json(200, {'valid': true}));
       await t.api.checkKey();
-      expect(t.seen.single.url.path, '/api/users/login');
+      expect(t.seen.single.method, 'GET');
+      expect(t.seen.single.url.path, '/api/keys/check');
       expect(t.seen.single.url.queryParameters['apikey'], 'test-key');
+      expect(t.seen.single.body, isEmpty);
     });
 
     test('checkKey throws when the key is rejected', () async {

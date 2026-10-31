@@ -29,7 +29,7 @@ and redacted: key, tokens and generated passwords are replaced by `<redacted>`).
   per run (`MAX_USERS`, normally 5; 1 with `--lockout-only`), uses
   `simpleapi-sample-apps+<random>@agentmail.to` addresses, and deletes each one with
   `DELETE /api/users/me` at the end (also on errors). If a delete fails it says so, so you can clean up.
-* Requests are paced to at most one per 1.1 s; a generic `429 Throttle...` is retried after `Retry-After`.
+* Requests are paced to at most one per second, and the script waits out the rate-limit window (`X-RateLimit-Remaining` low) or a `429 Rate limit exceeded` (`Retry-After`) instead of failing; `--ratelimit-only` runs just the rate-limit test (no users).
 * It sends real emails: one verification code and two password-reset requests per run (the API allows
   20 reset/verification emails per day per key, shared with everyone using the key). It never
   completes an emailed-code step.
