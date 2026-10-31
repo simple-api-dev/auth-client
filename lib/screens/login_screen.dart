@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../app_controller.dart';
-import '../widgets.dart';
+import '../app_state.dart';
+import 'ui.dart';
 import 'register_screen.dart';
 import 'reset_screen.dart';
 import 'settings_screen.dart';
@@ -10,7 +10,7 @@ import 'settings_screen.dart';
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key, required this.app});
 
-  final AppController app;
+  final AppState app;
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -22,7 +22,7 @@ class _LoginScreenState extends State<LoginScreen> with ActionState {
   final _password = TextEditingController();
 
   @override
-  AppController get app => widget.app;
+  AppState get app => widget.app;
 
   @override
   void dispose() {

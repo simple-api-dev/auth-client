@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:auth_client/app_controller.dart';
+import 'package:auth_client/app_state.dart';
 import 'package:auth_client/key_store.dart';
 import 'package:auth_client/main.dart';
 import 'package:flutter/material.dart';
@@ -30,7 +30,7 @@ class Harness {
     String buildKey = 'test-key',
     String? ownKey,
   }) : store = MemoryKeyStore(ownKey) {
-    controller = AppController(
+    controller = AppState(
       keyStore: store,
       buildKey: buildKey,
       urlOpener: opened.add,
@@ -42,7 +42,7 @@ class Harness {
   }
 
   final MemoryKeyStore store;
-  late final AppController controller;
+  late final AppState controller;
   final requests = <http.Request>[];
   final opened = <String>[];
 
@@ -160,10 +160,34 @@ void main() {
     await _tapText(tester, 'Create an account');
     await _type(tester, 'Name', 'Test User');
     await _type(tester, 'Email', 'test@example.test');
-    await _type(tester, 'Password (8 to 72 characters)', 'pw-12345678');
+    await _type(tester, 'Password', 'pw-12345678');
     await tester.tap(find.widgetWithText(FilledButton, 'Create account'));
     await tester.pumpAndSettle();
   }
+
+  testWidgets('register asks for 8 characters in helper text and has no numbered label', (tester) async {
+    final h = Harness((_) => _json(201, _session));
+    await h.pump(tester);
+    await _tapText(tester, 'Create an account');
+    expect(find.text('At least 8 characters'), findsOneWidget);
+    expect(find.widgetWithText(TextFormField, 'Password'), findsOneWidget);
+  });
+
+  testWidgets('settings uses the shared storage note and key status wording', (tester) async {
+    final h = Harness((_) => _json(401, {'message': 'x'}));
+    await h.pump(tester);
+    await _tapText(tester, 'Settings');
+    expect(find.textContaining('You are using the shared demo key.'), findsOneWidget);
+    expect(find.textContaining('Your key is stored only in this browser (localStorage) and sent only to auth.simpleapi.dev.'), findsOneWidget);
+  });
+
+  testWidgets('forgot password screen is titled Reset password', (tester) async {
+    final h = Harness((_) => _json(200, {'message': 'ok'}));
+    await h.pump(tester);
+    await _tapText(tester, 'Forgot password?');
+    expect(find.text('Reset password'), findsOneWidget);
+    expect(find.textContaining('6-digit code'), findsOneWidget);
+  });
 
   testWidgets('register shows a public-accounts notice on the demo key', (tester) async {
     final h = Harness((_) => _json(201, _session));
@@ -181,7 +205,7 @@ void main() {
 
   testWidgets('user cap on the demo key says the demo is full', (tester) async {
     final h = Harness((_) =>
-        _json(403, {'message': 'Maximum number of users for a Basic account reached'}));
+        _json(403, {'message': 'Maximum number of users (25) per key has been reached.'}));
     await h.pump(tester);
     await fillRegister(tester);
 
@@ -191,13 +215,13 @@ void main() {
 
   testWidgets('user cap on your own key keeps the plain 25 users message', (tester) async {
     final h = Harness((_) =>
-        _json(403, {'message': 'Maximum number of users for a Basic account reached'}),
+        _json(403, {'message': 'Maximum number of users (25) per key has been reached.'}),
         ownKey: 'my-key');
     await h.pump(tester);
     await fillRegister(tester);
 
     expect(find.textContaining('The demo is full'), findsNothing);
-    expect(find.textContaining('maximum of 25 users'), findsOneWidget);
+    expect(find.text('Maximum number of users (25) per key has been reached.'), findsOneWidget);
   });
 
   testWidgets('login success shows the profile loaded from /me', (tester) async {
@@ -221,20 +245,20 @@ void main() {
   });
 
   testWidgets('wrong password shows a plain message', (tester) async {
-    final h = Harness((_) => _json(401, {'message': 'Invalid credentials'}));
+    final h = Harness((_) => _json(401, {'message': 'Invalid email or password.'}));
     await h.pump(tester);
     await _submitLogin(tester, password: 'nope-nope-1');
 
-    expect(find.text('Wrong email or password.'), findsOneWidget);
+    expect(find.text('Invalid email or password.'), findsOneWidget);
     expect(find.text('Your account'), findsNothing);
   });
 
   testWidgets('lockout message is explained', (tester) async {
-    final h = Harness((_) => _json(429, {'message': 'Too many attempts'}));
+    final h = Harness((_) => _json(429, {'message': 'Too many failed logins for this email.  Please try again in 15 minutes.'}));
     await h.pump(tester);
     await _submitLogin(tester, password: 'nope-nope-1');
 
-    expect(find.textContaining('Too many failed log-in attempts'), findsOneWidget);
+    expect(find.textContaining('Please try again in 15 minutes.'), findsOneWidget);
   });
 
   testWidgets('register logs the new user in', (tester) async {
@@ -247,7 +271,7 @@ void main() {
     await _tapText(tester, 'Create an account');
     await _type(tester, 'Name', 'Test User');
     await _type(tester, 'Email', 'test@example.test');
-    await _type(tester, 'Password (8 to 72 characters)', 'pw-12345678');
+    await _type(tester, 'Password', 'pw-12345678');
     await tester.tap(find.widgetWithText(FilledButton, 'Create account'));
     await tester.pumpAndSettle();
 
@@ -263,7 +287,7 @@ void main() {
     await _tapText(tester, 'Create an account');
     await _type(tester, 'Name', 'Test User');
     await _type(tester, 'Email', 'test@example.test');
-    await _type(tester, 'Password (8 to 72 characters)', 'short');
+    await _type(tester, 'Password', 'short');
     await tester.tap(find.widgetWithText(FilledButton, 'Create account'));
     await tester.pumpAndSettle();
 

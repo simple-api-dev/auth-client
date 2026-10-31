@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 
-import '../app_controller.dart';
-import '../widgets.dart';
+import '../app_state.dart';
+import 'ui.dart';
 
 /// POST /api/users/register (also logs the new user in)
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key, required this.app});
 
-  final AppController app;
+  final AppState app;
 
   @override
   State<RegisterScreen> createState() => _RegisterScreenState();
@@ -20,7 +20,7 @@ class _RegisterScreenState extends State<RegisterScreen> with ActionState {
   final _password = TextEditingController();
 
   @override
-  AppController get app => widget.app;
+  AppState get app => widget.app;
 
   @override
   void dispose() {
@@ -60,7 +60,8 @@ class _RegisterScreenState extends State<RegisterScreen> with ActionState {
               StatusText(error: error, info: info),
               field(_name, 'Name', validator: notEmpty),
               field(_email, 'Email', keyboard: TextInputType.emailAddress, validator: notEmpty),
-              field(_password, 'Password (8 to 72 characters)',
+              field(_password, 'Password',
+                  helper: 'At least 8 characters',
                   obscure: true, validator: validPassword, onSubmitted: (_) => _register()),
               FilledButton(
                 onPressed: busy ? null : _register,

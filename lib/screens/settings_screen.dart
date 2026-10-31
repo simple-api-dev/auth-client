@@ -1,18 +1,18 @@
 import 'package:flutter/material.dart';
 
-import '../app_controller.dart';
+import '../app_state.dart';
 import '../auth_api.dart';
 import '../config.dart';
-import '../widgets.dart';
+import 'ui.dart';
 
-/// Use your own SimpleApi key instead of the demo key built into the site.
+/// Use your own SimpleAPI key instead of the demo key built into the site.
 ///
 /// The pasted key is checked with [AuthApi.checkKey], then kept only in this
 /// browser's localStorage. It overrides the build-time key until you go back.
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key, required this.app});
 
-  final AppController app;
+  final AppState app;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -23,7 +23,7 @@ class _SettingsScreenState extends State<SettingsScreen> with ActionState {
   final _key = TextEditingController();
 
   @override
-  AppController get app => widget.app;
+  AppState get app => widget.app;
 
   @override
   void dispose() {
@@ -61,10 +61,9 @@ class _SettingsScreenState extends State<SettingsScreen> with ActionState {
           key: _form,
           child: Section(
             title: 'Use your own key',
-            subtitle: '$status Get a free key at $getKeyUrl and paste it here. It is '
-                'checked with the API, saved only in this browser (localStorage) and '
-                'sent to auth.simpleapi.dev as the apikey query parameter. It '
-                'overrides the demo key.',
+            subtitle: '$status Get a free key at $getKeyUrl and paste it here. '
+                'Your key is stored only in this browser (localStorage) and sent only to '
+                '${Uri.parse(defaultHost).host}.',
             children: [
               StatusText(error: error, info: info),
               field(_key, 'API key', validator: notEmpty, onSubmitted: (_) => _save()),

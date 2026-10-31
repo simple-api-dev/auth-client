@@ -1,67 +1,25 @@
-// The whole SimpleApi Auth API client lives in this file.
-//
-// Every request goes to https://auth.simpleapi.dev/api/... and carries the
-// developer's key as the `apikey` QUERY parameter (not a header). Calls that
-// need a logged-in user also send `Authorization: Bearer <token>`.
-// The browser may call the API directly because the API allows any origin
-// (CORS), so this app needs no backend of its own.
+/// The whole SimpleAPI Auth API client lives in this file.
+///
+/// Every request goes to https://auth.simpleapi.dev/api/... and carries your
+/// API key as the `apikey` query parameter (not a header). Calls that need a
+/// logged-in user also send `Authorization: Bearer <token>`. The browser may
+/// call the API directly because the API allows any origin (CORS), so this app
+/// needs no backend of its own.
+library;
+
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
-const defaultBaseUrl = 'https://auth.simpleapi.dev';
+import 'models.dart';
 
-/// A user as returned by the API.
-class User {
-  const User({
-    required this.id,
-    required this.name,
-    required this.email,
-    required this.emailVerified,
-    this.admin = false,
-    this.enabled = true,
-    this.createdAt,
-  });
+const defaultHost = 'https://auth.simpleapi.dev';
 
-  factory User.fromJson(Map<String, dynamic> json) => User(
-        id: json['id'] as int,
-        name: json['name'] as String? ?? '',
-        email: json['email'] as String? ?? '',
-        emailVerified: json['email_verified'] as bool? ?? false,
-        admin: json['admin'] as bool? ?? false,
-        enabled: json['enabled'] as bool? ?? true,
-        createdAt: json['created_at'] as String?,
-      );
-
-  final int id;
-  final String name;
-  final String email;
-  final bool emailVerified;
-  final bool admin;
-  final bool enabled;
-  final String? createdAt;
-}
-
-/// What register and login return: a token plus the user it belongs to.
-class Session {
-  const Session({required this.token, required this.user, this.expiresAt});
-
-  factory Session.fromJson(Map<String, dynamic> json) => Session(
-        token: json['token'] as String,
-        expiresAt: json['expires_at'] as String?,
-        user: User.fromJson(json['user'] as Map<String, dynamic>),
-      );
-
-  final String token;
-  final String? expiresAt;
-  final User user;
-}
-
-/// Thrown for any non-2xx answer, and for network failures (status 0).
+/// Thrown for any non-2xx answer, and for network failures (statusCode 0).
 class ApiException implements Exception {
-  ApiException(this.status, this.path, this.serverMessage, {this.retryAfter});
+  ApiException(this.statusCode, this.path, this.serverMessage, {this.retryAfter, this.host = defaultHost});
 
-  final int status;
+  final int statusCode;
 
   /// The route that failed, for example `/api/users/login`.
   final String path;
@@ -69,105 +27,58 @@ class ApiException implements Exception {
   /// The `message` the API sent (empty when there was none).
   final String serverMessage;
 
-  /// The `Retry-After` header of a 429 (seconds, as the API sends it), or null
-  /// when it was absent or unreadable. A browser only exposes it to the app if
-  /// the API lists it in Access-Control-Expose-Headers, so never rely on it.
+  /// The `Retry-After` header of a 429, or null when it was absent.
   final Duration? retryAfter;
 
-  bool get isNetworkError => status == 0;
+  /// The server this call went to.
+  final String host;
 
-  /// The key already has the maximum number of users. The Swagger docs list
-  /// 403 on POST /api/users/register as "Maximum number of users for a Basic
-  /// account reached" (Basic accounts are limited to 25 users). No other
-  /// outcome of register uses 403.
-  bool get isUserCapReached => status == 403 && path.endsWith('/users/register');
+  bool get isNetworkError => statusCode == 0;
+
+  /// The key already has the maximum number of users (403 on register).
+  bool get isUserCapReached => statusCode == 403 && path.endsWith('/users/register');
 
   /// 401 caused by a missing or unknown apikey.
   bool get isBadKey =>
-      status == 401 &&
+      statusCode == 401 &&
       (path.endsWith('/keys/check') || serverMessage.toLowerCase().contains('apikey'));
 
   /// The general per-IP rate limit (any route), as opposed to the login
   /// lockout or the email limits, which are 429 too. Its message starts with
   /// "Rate limit exceeded".
   bool get isRateLimited =>
-      status == 429 && serverMessage.toLowerCase().startsWith('rate limit');
-
-  /// A request body that was not valid JSON. The apikey is checked first, so
-  /// this is never a bad key. The app always sends valid JSON, so seeing this
-  /// means a bug or a proxy that altered the body.
-  bool get isMalformedJson =>
-      status == 400 && serverMessage.toLowerCase().contains('malformed json');
-
-  static String _wait(Duration? d) {
-    if (d == null) return '';
-    final s = d.inSeconds;
-    if (s < 60) return ' Try again in ${s < 1 ? 1 : s} seconds.';
-    final m = (s / 60).ceil();
-    return ' Try again in about $m minute${m == 1 ? '' : 's'}.';
-  }
+      statusCode == 429 && serverMessage.toLowerCase().startsWith('rate limit');
 
   /// 401 on a protected route: the token is missing, expired or logged out.
   bool get isBadSession =>
-      status == 401 && !isBadKey && !path.endsWith('/users/login');
-
-  /// A plain-language explanation for the user. The status code alone is not
-  /// enough because the same code means different things on different routes
-  /// (429 on login is a lockout, 429 on forgot is a daily email limit).
-  String get plain {
-    final detail = serverMessage.isEmpty ? '' : ' ($serverMessage)';
-    if (isNetworkError) {
-      return 'Could not reach auth.simpleapi.dev. Check your connection and try again.';
-    }
-    if (isBadKey) {
-      return 'The API key was not accepted. Check the key you pasted, or get a free one at keys.simpleapi.dev.';
-    }
-    if (isBadSession) {
-      return 'Your session has ended. Please log in again.';
-    }
-    if (isRateLimited) {
-      final wait = _wait(retryAfter);
-      return 'Too many requests from your network.${wait.isEmpty ? ' Wait a moment and try again.' : wait}';
-    }
-    if (isMalformedJson) {
-      return 'The API could not read the request (malformed JSON). Please try again; if it keeps happening it is a bug in this app.';
-    }
-    final login = path.endsWith('/users/login');
-    final sendCode = path.endsWith('/email/send-code');
-    final forgot = path.endsWith('/users/forgot');
-    final codeCheck = path.endsWith('/users/reset') || path.endsWith('/email/verify');
-    switch (status) {
-      case 400 when codeCheck:
-        return 'That code is wrong or has expired. A code works once, lasts 15 minutes and allows 5 wrong attempts. Request a new code if needed.$detail';
-      case 401 when login:
-        return 'Wrong email or password.';
-      case 403 when login:
-        return 'This account has been disabled.';
-      case 403 when isUserCapReached:
-        return 'This key already has the maximum of 25 users on the free tier. Delete an account or use another key.';
-      case 403:
-        return 'The current password is wrong.';
-      case 409 when sendCode:
-        return 'This email address is already verified.';
-      case 409:
-        return 'That email is already registered.';
-      case 422:
-        return serverMessage.isEmpty ? 'Some of the details are not valid.' : serverMessage;
-      case 429 when login:
-        // The lockout is 15 minutes counted from the first failure; Retry-After
-        // says how much is left. The server text says the same in words.
-        final wait = _wait(retryAfter);
-        return 'Too many failed log-in attempts. This email is locked for up to 15 minutes.${wait.isEmpty ? '' : wait}';
-      case 429 when sendCode:
-        return 'Please wait a minute before asking for another code (there is also a limit of 20 emails per day for each key).$detail';
-      case 429 when forgot:
-        return 'The daily limit of 20 reset and verification emails for this key has been reached. Try again tomorrow.$detail';
-    }
-    return serverMessage.isEmpty ? 'Something went wrong (HTTP $status).' : '$serverMessage (HTTP $status)';
-  }
+      statusCode == 401 && !isBadKey && !path.endsWith('/users/login');
 
   @override
-  String toString() => 'ApiException($status $path: $serverMessage)';
+  String toString() => 'ApiException($statusCode $path: $serverMessage)';
+}
+
+/// The one place errors become text for the user. The wording is the same in
+/// every SimpleAPI sample app.
+String describeError(ApiException e) {
+  final api = e.serverMessage;
+  if (e.isNetworkError) {
+    return 'Could not reach ${Uri.parse(e.host).host}. Check your connection and try again.';
+  }
+  if (e.isBadKey) return 'The API key was not accepted. Check it under Settings.';
+  if (e.isBadSession) return 'Your session has ended. Please log in again.';
+  if (e.isRateLimited) return 'Too many requests. Wait a few seconds and try again.';
+  switch (e.statusCode) {
+    case 404:
+      return 'Not found. It may already have been deleted.';
+    case 401: // a wrong email or password on login
+    case 400:
+    case 403:
+    case 409:
+    case 422:
+    case 429: // the login lockout and the daily email limit say how long to wait
+      if (api.isNotEmpty) return api;
+  }
+  return api.isEmpty ? 'Something went wrong (HTTP ${e.statusCode}).' : '$api (HTTP ${e.statusCode})';
 }
 
 class AuthApi {
@@ -175,11 +86,11 @@ class AuthApi {
     required this.apiKey,
     this.token,
     http.Client? client,
-    this.baseUrl = defaultBaseUrl,
+    this.host = defaultHost,
   }) : _client = client ?? http.Client();
 
   final String apiKey;
-  final String baseUrl;
+  final String host;
   final http.Client _client;
 
   /// Set after register/login, sent as the Bearer token on protected calls.
@@ -313,7 +224,7 @@ class AuthApi {
     bool auth = false,
   }) async {
     // The key travels in the query string: ...?apikey=<key>
-    final uri = Uri.parse(baseUrl).replace(path: path, queryParameters: {'apikey': apiKey});
+    final uri = Uri.parse(host).replace(path: path, queryParameters: {'apikey': apiKey});
     final request = http.Request(method, uri)..headers['Accept'] = 'application/json';
     if (body != null) {
       request.headers['Content-Type'] = 'application/json';
@@ -325,13 +236,14 @@ class AuthApi {
     try {
       response = await http.Response.fromStream(await _client.send(request));
     } on http.ClientException {
-      throw ApiException(0, path, '');
+      throw ApiException(0, path, '', host: host);
     }
 
     final decoded = _decode(response.body);
     if (response.statusCode < 200 || response.statusCode >= 300) {
       final seconds = int.tryParse(response.headers['retry-after']?.trim() ?? '');
       throw ApiException(response.statusCode, path, _errorText(decoded),
+          host: host,
           retryAfter: seconds == null || seconds < 0 ? null : Duration(seconds: seconds));
     }
     return decoded is Map<String, dynamic> ? decoded : <String, dynamic>{};
