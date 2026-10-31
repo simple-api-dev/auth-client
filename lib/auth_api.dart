@@ -59,7 +59,7 @@ class Session {
 
 /// Thrown for any non-2xx answer, and for network failures (status 0).
 class ApiException implements Exception {
-  ApiException(this.status, this.path, this.serverMessage);
+  ApiException(this.status, this.path, this.serverMessage, {this.retryAfter});
 
   final int status;
 
@@ -68,6 +68,11 @@ class ApiException implements Exception {
 
   /// The `message` the API sent (empty when there was none).
   final String serverMessage;
+
+  /// The `Retry-After` header of a 429 (seconds, as the API sends it), or null
+  /// when it was absent or unreadable. A browser only exposes it to the app if
+  /// the API lists it in Access-Control-Expose-Headers, so never rely on it.
+  final Duration? retryAfter;
 
   bool get isNetworkError => status == 0;
 
@@ -79,7 +84,28 @@ class ApiException implements Exception {
 
   /// 401 caused by a missing or unknown apikey.
   bool get isBadKey =>
-      status == 401 && serverMessage.toLowerCase().contains('apikey');
+      status == 401 &&
+      (path.endsWith('/keys/check') || serverMessage.toLowerCase().contains('apikey'));
+
+  /// The general per-IP rate limit (any route), as opposed to the login
+  /// lockout or the email limits, which are 429 too. Its message starts with
+  /// "Rate limit exceeded".
+  bool get isRateLimited =>
+      status == 429 && serverMessage.toLowerCase().startsWith('rate limit');
+
+  /// A request body that was not valid JSON. The apikey is checked first, so
+  /// this is never a bad key. The app always sends valid JSON, so seeing this
+  /// means a bug or a proxy that altered the body.
+  bool get isMalformedJson =>
+      status == 400 && serverMessage.toLowerCase().contains('malformed json');
+
+  static String _wait(Duration? d) {
+    if (d == null) return '';
+    final s = d.inSeconds;
+    if (s < 60) return ' Try again in ${s < 1 ? 1 : s} seconds.';
+    final m = (s / 60).ceil();
+    return ' Try again in about $m minute${m == 1 ? '' : 's'}.';
+  }
 
   /// 401 on a protected route: the token is missing, expired or logged out.
   bool get isBadSession =>
@@ -98,6 +124,13 @@ class ApiException implements Exception {
     }
     if (isBadSession) {
       return 'Your session has ended. Please log in again.';
+    }
+    if (isRateLimited) {
+      final wait = _wait(retryAfter);
+      return 'Too many requests from your network.${wait.isEmpty ? ' Wait a moment and try again.' : wait}';
+    }
+    if (isMalformedJson) {
+      return 'The API could not read the request (malformed JSON). Please try again; if it keeps happening it is a bug in this app.';
     }
     final login = path.endsWith('/users/login');
     final sendCode = path.endsWith('/email/send-code');
@@ -121,7 +154,10 @@ class ApiException implements Exception {
       case 422:
         return serverMessage.isEmpty ? 'Some of the details are not valid.' : serverMessage;
       case 429 when login:
-        return 'Too many failed log-in attempts. This email is locked for 15 minutes; try again later.$detail';
+        // The lockout is 15 minutes counted from the first failure; Retry-After
+        // says how much is left. The server text says the same in words.
+        final wait = _wait(retryAfter);
+        return 'Too many failed log-in attempts. This email is locked for up to 15 minutes.${wait.isEmpty ? '' : wait}';
       case 429 when sendCode:
         return 'Please wait a minute before asking for another code (there is also a limit of 20 emails per day for each key).$detail';
       case 429 when forgot:
@@ -153,22 +189,12 @@ class AuthApi {
 
   /// Checks that the key is accepted, without creating anything.
   ///
-  /// The API has no dedicated "check key" route, but it checks the apikey
-  /// before anything else. So POST /api/users/login with an empty body
-  /// answers 401 ("...valid apikey...") for a bad key, and 422 (validation
-  /// failed) for a good one. Throws [ApiException] when the key is rejected
-  /// or the API cannot be reached.
+  /// GET /api/keys/check answers 200 `{"valid": true}` for a good key and 401
+  /// for a missing or unknown one. It needs no login and touches no user.
+  /// Throws [ApiException] when the key is rejected or the API cannot be
+  /// reached.
   Future<void> checkKey() async {
-    try {
-      await _send('POST', '/api/users/login', body: <String, dynamic>{});
-    } on ApiException catch (e) {
-      if (e.status == 422) return;
-      if (e.status == 401 && !e.isBadKey) {
-        // A 401 that is not about the key still means the key got through.
-        return;
-      }
-      rethrow;
-    }
+    await _send('GET', '/api/keys/check');
   }
 
   /// POST /api/users/register
@@ -304,7 +330,9 @@ class AuthApi {
 
     final decoded = _decode(response.body);
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw ApiException(response.statusCode, path, _errorText(decoded));
+      final seconds = int.tryParse(response.headers['retry-after']?.trim() ?? '');
+      throw ApiException(response.statusCode, path, _errorText(decoded),
+          retryAfter: seconds == null || seconds < 0 ? null : Duration(seconds: seconds));
     }
     return decoded is Map<String, dynamic> ? decoded : <String, dynamic>{};
   }

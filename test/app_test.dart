@@ -99,12 +99,12 @@ void main() {
   });
 
   testWidgets('a valid own key is checked, stored and overrides the build key', (tester) async {
-    // 422 on an empty login body means the key was accepted.
+    // GET /api/keys/check answers 200 for a good key.
     final h = Harness((r) {
       if (r.url.queryParameters['apikey'] == 'my-key' &&
-          r.url.path == '/api/users/login' &&
-          r.body == '{}') {
-        return _json(422, {'message': 'The email field is required.'});
+          r.method == 'GET' &&
+          r.url.path == '/api/keys/check') {
+        return _json(200, {'valid': true});
       }
       return _json(401, {'message': 'Invalid credentials'});
     }, buildKey: 'build-key');
