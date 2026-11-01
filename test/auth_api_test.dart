@@ -204,6 +204,12 @@ void main() {
       expect(describeError(e), 'Your session has ended. Please log in again.');
     });
 
+    test('the demo account refusal is the API message', () async {
+      const refused = {'message': 'The demo account cannot be changed.'};
+      expect(describeError(await _fails((a) => a.updateMe(name: 'x'), 403, refused)), refused['message']);
+      expect(describeError(await _fails((a) => a.deleteMe('x'), 403, refused)), refused['message']);
+    });
+
     test('register: duplicate email, full key, validation', () async {
       Future<Object?> reg(AuthApi a) =>
           a.register(name: 'n', email: 'e@example.test', password: 'pw-12345678');

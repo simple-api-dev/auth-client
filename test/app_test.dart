@@ -17,8 +17,8 @@ const _user = {
   'email_verified': false,
   'admin': false,
   'enabled': true,
-  'created_at': '2026-01-01T00:00:00Z',
-  'updated_at': '2026-01-01T00:00:00Z',
+  'created_at': '2026-01-15T12:00:00Z',
+  'updated_at': '2026-01-15T12:00:00Z',
 };
 const _session = {'token': 'tok-123', 'expires_at': '2026-02-01T00:00:00Z', 'user': _user};
 
@@ -70,6 +70,31 @@ Future<void> _submitLogin(WidgetTester tester, {String password = 'pw-12345678'}
   await tester.pumpAndSettle();
 }
 
+/// The login screen every SimpleAPI demo shares: same order, same widths, and no overflow at 360px.
+Future<void> expectSharedLoginLayout(WidgetTester tester) async {
+  final demo = find.widgetWithText(FilledButton, 'Try the demo account');
+  final logIn = find.widgetWithText(FilledButton, 'Log in');
+  final order = [
+    demo,
+    find.byType(Divider),
+    find.text(demoNoticeText),
+    find.widgetWithText(TextFormField, 'Email'),
+    find.widgetWithText(TextFormField, 'Password'),
+    logIn,
+  ];
+  final tops = [for (final item in order) tester.getTopLeft(item).dy];
+  expect(tops, [...tops]..sort());
+  expect(tester.getTopLeft(find.widgetWithText(TextButton, 'Create an account')).dy, greaterThanOrEqualTo(tops.last));
+
+  expect(tester.getSize(demo).width, 512); // 560 wide with 24 of padding
+  expect(tester.getSize(find.widgetWithText(TextFormField, 'Email')).width, 512);
+  expect(tester.getSize(logIn).width, lessThan(512));
+
+  tester.view.physicalSize = const Size(360, 800);
+  await tester.pump();
+  expect(tester.getSize(demo).width, 312);
+}
+
 void main() {
   // ---- Demo experience -----------------------------------------------------
 
@@ -86,6 +111,14 @@ void main() {
 
     await _submitLogin(tester);
     expect(h.requests.single.url.queryParameters['apikey'], 'build-key');
+  });
+
+  testWidgets('the login screen follows the shared login layout, with no separate demo card', (tester) async {
+    await Harness((_) => _json(401, {'message': 'x'})).pump(tester);
+    await tester.pumpAndSettle();
+    expect(find.text('See it working'), findsNothing);
+    expect(find.byType(Card), findsNothing);
+    await expectSharedLoginLayout(tester);
   });
 
   testWidgets('Try the demo account logs in as the shared demo user in one click', (tester) async {
@@ -295,6 +328,25 @@ void main() {
       expect(find.text('Name saved.'), findsOneWidget);
     });
 
+    testWidgets('the profile shows a readable date, not the raw timestamp', (tester) async {
+      await start(tester);
+      expect(find.textContaining('Created: 15 Jan 2026'), findsOneWidget);
+      expect(find.textContaining('2026-01-15'), findsNothing);
+    });
+
+    testWidgets('a refusal from the API is shown as its message', (tester) async {
+      final h = Harness((r) {
+        if (r.method == 'PUT') return _json(403, {'message': 'The demo account cannot be changed.'});
+        return handler(r);
+      });
+      await h.pump(tester);
+      await _submitLogin(tester);
+      await _type(tester, 'Name', 'Renamed');
+      await _tapText(tester, 'Save name');
+      expect(find.text('The demo account cannot be changed.'), findsOneWidget);
+      expect(find.text('Your account'), findsOneWidget);
+    });
+
     testWidgets('verify email with a code', (tester) async {
       final h = await start(tester);
       await _tapText(tester, 'Email me a code');
@@ -364,10 +416,16 @@ void main() {
 
     testWidgets('account changes are not offered', (tester) async {
       await demo(tester);
-      for (final text in ['Verify your email', 'Change email', 'Change password', 'Delete my account']) {
+      for (final text in ['Verify your email', 'Change email', 'Change password', 'Delete my account', 'Save name']) {
         expect(find.text(text), findsNothing);
       }
       expect(find.text('Your account'), findsOneWidget);
+    });
+
+    testWidgets('the profile shows the name without offering an edit', (tester) async {
+      await demo(tester);
+      expect(find.textContaining('Name: Test User'), findsOneWidget);
+      expect(find.byType(TextFormField), findsNothing);
     });
 
     testWidgets('the password reset flow is refused for the demo email', (tester) async {
@@ -382,6 +440,12 @@ void main() {
       expect(find.text(demoLockedMessage), findsNWidgets(2));
       expect(h.requests, isEmpty);
     });
+  });
+
+  test('readableDate shows the day, month and year, and nothing for a bad value', () {
+    expect(readableDate(DateTime(2026, 11, 1, 12).toUtc().toIso8601String()), '1 Nov 2026');
+    expect(readableDate('not a date'), isNull);
+    expect(readableDate(null), isNull);
   });
 
   testWidgets('forgot password: send code then reset', (tester) async {

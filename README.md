@@ -35,12 +35,11 @@ Login and register never send the bearer token. A `401` on a call made while log
 
 | Screen | What it does | API call |
 | --- | --- | --- |
-| Log in, Try the demo account | One click logs in as `demo@simpleapi.dev`; the same screen has the normal form | `POST /api/users/login` |
-| Log in | Log in; shows the 15 minute lockout after 5 wrong passwords | `POST /api/users/login` |
+| Log in | **Try the demo account** logs in as `demo@simpleapi.dev` in one click. Below it are the normal form, which shows the 15 minute lockout after 5 wrong passwords, and the links to the other two screens | `POST /api/users/login` |
 | Create an account | Register and be logged in | `POST /api/users/register` |
 | Reset password, step 1 | Email a 6-digit code | `POST /api/users/forgot` |
 | Reset password, step 2 | Set a new password with the code | `POST /api/users/reset` |
-| Your account: Profile | Show the profile, edit the name | `GET /api/users/me`, `PUT /api/users/me` |
+| Your account: Profile | Show the profile, edit the name. Dates read like `1 Nov 2026`. The demo account sees no edit | `GET /api/users/me`, `PUT /api/users/me` |
 | Verify your email | Email a code, then confirm it | `POST /api/users/me/email/send-code`, `POST /api/users/me/email/verify` |
 | Change email, Change password | Needs the current password | `PUT /api/users/me` |
 | Log out | This device, or all devices | `POST /api/users/logout` (`?all=true` for all) |
@@ -59,7 +58,7 @@ Get a free key at [keys.simpleapi.dev](https://keys.simpleapi.dev/?product=auth)
 ## The shared demo account
 
 - **One account for everyone.** `demo@simpleapi.dev` with password `try-the-demo` (public by design, constants in `lib/config.dart`). Data resets every night.
-- **It cannot be changed or deleted.** Deleting it, changing its email or password, or resetting its password is refused in the app with a short message, so one visitor cannot lock out the rest. Anyone can still register their own account to try those screens.
+- **It cannot be changed or deleted.** The app does not offer to rename it, delete it or change its email or password, and refuses a password reset for it with a short message, so one visitor cannot lock out the rest. The API protects it too: `PUT /api/users/me`, `DELETE /api/users/me`, `users/forgot`, `users/reset` and the `users/me/email` routes answer `403` `The demo account cannot be changed.`, and `users/logout?all=true` ends only your own session. Anyone can still register their own account to try those screens.
 - **25 users per key on the free tier.** When the shared key is full, registering shows "The demo is full. It resets every night."
 - Every top-level screen has a back arrow (tooltip "Back to SimpleAPI") that opens https://simpleapi.dev in the same tab.
 
