@@ -14,6 +14,7 @@ const _userJson = {
   'admin': false,
   'enabled': true,
   'created_at': '2026-01-01T00:00:00Z',
+  'updated_at': '2026-01-01T00:00:00Z',
 };
 const _sessionJson = {'token': 'tok-123', 'expires_at': '2026-02-01T00:00:00Z', 'user': _userJson};
 
@@ -119,10 +120,12 @@ void main() {
       final t = _api((_) => _json(200, {'message': 'Logged out'}), token: 'tok-123');
       await t.api.logout();
       expect(t.seen.last.url.path, '/api/users/logout');
-      expect(t.seen.last.body, isEmpty);
+      expect(t.seen.last.url.queryParameters.containsKey('all'), isFalse);
 
       await t.api.logout(all: true);
-      expect(jsonDecode(t.seen.last.body), {'all': true});
+      expect(t.seen.last.url.queryParameters['all'], 'true');
+      expect(t.seen.last.url.queryParameters['apikey'], isNotEmpty);
+      expect(t.seen.last.body, isEmpty);
     });
 
     test('forgot and reset need no token', () async {
@@ -187,6 +190,12 @@ void main() {
       expect(cap.isUserCapReached, isTrue);
       final other = await _fails((a) => a.updateMe(name: 'x'), 403, {'message': 'x'}, token: 't');
       expect(other.isUserCapReached, isFalse);
+    });
+
+    test('503 gets the shared wording', () async {
+      final e = await _fails((a) => a.me(), 503,
+          {'message': 'Key service unavailable. Please try again shortly.'}, token: 't');
+      expect(describeError(e), 'The service is busy. Please try again shortly.');
     });
 
     test('expired token is a bad session', () async {

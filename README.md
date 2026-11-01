@@ -43,7 +43,7 @@ Login and register never send the bearer token. A `401` on a call made while log
 | Your account: Profile | Show the profile, edit the name | `GET /api/users/me`, `PUT /api/users/me` |
 | Verify your email | Email a code, then confirm it | `POST /api/users/me/email/send-code`, `POST /api/users/me/email/verify` |
 | Change email, Change password | Needs the current password | `PUT /api/users/me` |
-| Log out | This device, or all devices | `POST /api/users/logout` (`{"all": true}` for all) |
+| Log out | This device, or all devices | `POST /api/users/logout` (`?all=true` for all) |
 | Delete account | Needs the password | `DELETE /api/users/me` |
 
 The admin calls (`/api/users`, `/api/users/{id}`) are for the owner of the key and are not used here. Errors are turned into plain text in one function, `describeError` in `lib/auth_api.dart`.
@@ -67,7 +67,7 @@ Get a free key at [keys.simpleapi.dev](https://keys.simpleapi.dev/?product=auth)
 
 - Passwords are 8 to 72 characters. Emails are not case sensitive.
 - Five wrong passwords lock that email for 15 minutes (`429`). Reset and verification codes work once, last 15 minutes and allow 5 wrong tries. A key can send 20 reset and verification emails a day.
-- Wrong login `401`, duplicate email `409`, malformed JSON `400`, validation `422`, rate limit `429` (60 requests a minute per IP address).
+- Wrong login `401`, wrong password when deleting an account `403`, duplicate email `409`, malformed JSON `400`, validation `422`, rate limit `429` (60 requests a minute per IP address), keys service down `503`.
 - The session token is kept in memory only, so reloading the page logs you out.
 - The only dependency besides Flutter is the `http` package.
 
@@ -81,7 +81,7 @@ Get a free key at [keys.simpleapi.dev](https://keys.simpleapi.dev/?product=auth)
 | `lib/config.dart` | The build-time key (`SIMPLEAPI_KEY`) and the public demo account constants |
 | `lib/open_url*.dart` | Opens a link in the same tab (the back arrow) |
 | `lib/screens/` | One file per screen, and `ui.dart` with the shared widgets |
-| `test/` | Unit and widget tests with a mocked HTTP client, and `live_shapes/` with real API answers replayed through the client |
+| `test/` | Unit and widget tests with a mocked HTTP client, and `live_shapes/` with the API's answers replayed through the client |
 
 ## Deploy to GitHub Pages
 

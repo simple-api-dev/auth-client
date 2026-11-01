@@ -39,9 +39,7 @@ class ApiException implements Exception {
   bool get isUserCapReached => statusCode == 403 && path.endsWith('/users/register');
 
   /// 401 caused by a missing or unknown apikey.
-  bool get isBadKey =>
-      statusCode == 401 &&
-      (path.endsWith('/keys/check') || serverMessage.toLowerCase().contains('apikey'));
+  bool get isBadKey => statusCode == 401 && serverMessage.toLowerCase().contains('apikey');
 
   /// The general per-IP rate limit (any route), as opposed to the login
   /// lockout or the email limits, which are 429 too. Its message starts with
@@ -70,6 +68,8 @@ String describeError(ApiException e) {
   switch (e.statusCode) {
     case 404:
       return 'Not found. It may already have been deleted.';
+    case 503:
+      return 'The service is busy. Please try again shortly.';
     case 401: // a wrong email or password on login
     case 400:
     case 403:
@@ -179,10 +179,10 @@ class AuthApi {
 
   /// POST /api/users/logout
   /// Ends the session of the token you send, or every session of the user
-  /// (all devices) when [all] is true.
+  /// (all devices, `?all=true`) when [all] is true.
   Future<String> logout({bool all = false}) async {
     final json = await _send('POST', '/api/users/logout',
-        auth: true, body: all ? {'all': true} : null);
+        auth: true, query: all ? {'all': 'true'} : null);
     return _message(json);
   }
 
@@ -211,10 +211,11 @@ class AuthApi {
     String method,
     String path, {
     Map<String, dynamic>? body,
+    Map<String, String>? query,
     bool auth = false,
   }) async {
     // The key travels in the query string: ...?apikey=<key>
-    final uri = Uri.parse(host).replace(path: path, queryParameters: {'apikey': apiKey});
+    final uri = Uri.parse(host).replace(path: path, queryParameters: {'apikey': apiKey, ...?query});
     final request = http.Request(method, uri)..headers['Accept'] = 'application/json';
     if (body != null) {
       request.headers['Content-Type'] = 'application/json';

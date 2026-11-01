@@ -251,7 +251,7 @@ class _ChangePasswordSectionState extends State<ChangePasswordSection> with Acti
   }
 }
 
-/// POST /api/users/logout (this device) or {"all": true} (every device)
+/// POST /api/users/logout (this device) or ?all=true (every device)
 class LogoutSection extends StatefulWidget {
   const LogoutSection({super.key, required this.app});
 
