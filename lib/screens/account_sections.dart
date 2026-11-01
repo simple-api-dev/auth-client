@@ -4,7 +4,8 @@ import '../app_state.dart';
 import '../models.dart';
 import 'ui.dart';
 
-/// Shows the profile and edits the name: PUT /api/users/me {name}
+/// Shows the profile and edits the name: PUT /api/users/me {name}. The API refuses that for the shared demo account,
+/// so the app shows its name without offering an edit.
 class ProfileSection extends StatefulWidget {
   const ProfileSection({super.key, required this.app, required this.user});
 
@@ -38,30 +39,34 @@ class _ProfileSectionState extends State<ProfileSection> with ActionState {
   @override
   Widget build(BuildContext context) {
     final user = widget.user;
+    final created = readableDate(user.createdAt);
     return Form(
       key: _form,
       child: Section(
         title: 'Profile',
         subtitle:
+            '${app.isDemoUser ? 'Name: ${user.name}\n' : ''}'
             'Email: ${user.email}  '
             '(${user.emailVerified ? 'verified' : 'not verified'})\n'
             'User id: ${user.id}'
-            '${user.createdAt == null ? '' : '   Created: ${user.createdAt}'}',
+            '${created == null ? '' : '   Created: $created'}',
         children: [
-          StatusText(error: error, info: info),
-          field(_name, 'Name', validator: notEmpty),
-          FilledButton(
-            onPressed: busy
-                ? null
-                : () async {
-                    if (!_form.currentState!.validate()) return;
-                    await run(() async {
-                      app.updateUser(await app.api.updateMe(name: _name.text.trim()));
-                      return 'Name saved.';
-                    });
-                  },
-            child: const Text('Save name'),
-          ),
+          if (!app.isDemoUser) ...[
+            StatusText(error: error, info: info),
+            field(_name, 'Name', validator: notEmpty),
+            FilledButton(
+              onPressed: busy
+                  ? null
+                  : () async {
+                      if (!_form.currentState!.validate()) return;
+                      await run(() async {
+                        app.updateUser(await app.api.updateMe(name: _name.text.trim()));
+                        return 'Name saved.';
+                      });
+                    },
+              child: const Text('Save name'),
+            ),
+          ],
         ],
       ),
     );

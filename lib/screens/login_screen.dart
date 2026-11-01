@@ -51,25 +51,19 @@ class _LoginScreenState extends State<LoginScreen> with ActionState {
     return PageShell(
       title: 'SimpleAPI Auth',
       app: app,
+      padding: const EdgeInsets.all(24),
       children: [
-        Section(
-          title: 'See it working',
-          subtitle: 'One click logs you in as the shared demo user. No signup needed.',
-          children: [
-            FilledButton(
-              onPressed: busy ? null : _tryDemo,
-              child: Text(busy ? 'Please wait...' : 'Try the demo account'),
-            ),
-          ],
+        FilledButton(
+          onPressed: busy ? null : _tryDemo,
+          child: Text(busy ? 'Please wait...' : 'Try the demo account'),
         ),
+        const Divider(height: 32),
+        const DemoNotice(),
         Form(
           key: _form,
-          child: Section(
-            title: 'Log in',
-            subtitle: 'After 5 wrong passwords an email is locked for 15 minutes.',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const DemoNotice(),
-              StatusText(error: error ?? app.notice, info: info),
               field(_email, 'Email', keyboard: TextInputType.emailAddress, validator: notEmpty),
               field(
                 _password,
@@ -78,29 +72,36 @@ class _LoginScreenState extends State<LoginScreen> with ActionState {
                 validator: notEmpty,
                 onSubmitted: (_) => _login(),
               ),
-              FilledButton.tonal(
-                onPressed: busy ? null : _login,
-                child: Text(busy ? 'Logging in...' : 'Log in'),
+              StatusText(error: error ?? app.notice, info: info),
+              const SizedBox(height: 4),
+              Wrap(
+                spacing: 12,
+                runSpacing: 4,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  FilledButton(
+                    onPressed: busy ? null : _login,
+                    child: Text(busy ? 'Logging in...' : 'Log in'),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.of(context)
+                        .push(MaterialPageRoute<void>(builder: (_) => RegisterScreen(app: app))),
+                    child: const Text('Create an account'),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.of(context)
+                        .push(MaterialPageRoute<void>(builder: (_) => ResetScreen(app: app))),
+                    child: const Text('Forgot password?'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'After 5 wrong passwords an email is locked for 15 minutes.',
+                style: Theme.of(context).textTheme.bodySmall,
               ),
             ],
           ),
-        ),
-        Wrap(
-          spacing: 8,
-          children: [
-            TextButton(
-              onPressed: () =>
-                  Navigator.of(context)
-                      .push(MaterialPageRoute<void>(builder: (_) => RegisterScreen(app: app))),
-              child: const Text('Create an account'),
-            ),
-            TextButton(
-              onPressed: () =>
-                  Navigator.of(context)
-                      .push(MaterialPageRoute<void>(builder: (_) => ResetScreen(app: app))),
-              child: const Text('Forgot password?'),
-            ),
-          ],
         ),
       ],
     );

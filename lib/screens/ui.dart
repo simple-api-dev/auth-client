@@ -6,11 +6,19 @@ import '../config.dart';
 
 /// A centered, scrollable page with a sensible maximum width.
 class PageShell extends StatelessWidget {
-  const PageShell({super.key, required this.title, required this.children, this.actions, this.app});
+  const PageShell({
+    super.key,
+    required this.title,
+    required this.children,
+    this.actions,
+    this.app,
+    this.padding = const EdgeInsets.all(16),
+  });
 
   final String title;
   final List<Widget> children;
   final List<Widget>? actions;
+  final EdgeInsets padding;
 
   /// Pass the app on top-level screens: they get a back arrow to simpleapi.dev. Inner screens leave it null and
   /// keep the normal in-app back arrow.
@@ -33,7 +41,7 @@ class PageShell extends StatelessWidget {
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 560),
-          child: ListView(padding: const EdgeInsets.all(16), children: children),
+          child: ListView(padding: padding, children: children),
         ),
       ),
     );
@@ -106,6 +114,15 @@ String? validPassword(String? value) {
   return null;
 }
 
+/// An API timestamp such as `2026-11-01T05:32:25Z` as a date for people, `1 Nov 2026`, in the viewer's time zone.
+/// Null when there is no valid timestamp, so a raw value never reaches the screen.
+String? readableDate(String? timestamp) {
+  final date = timestamp == null ? null : DateTime.tryParse(timestamp)?.toLocal();
+  if (date == null) return null;
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return '${date.day} ${months[date.month - 1]} ${date.year}';
+}
+
 const demoFullMessage = 'The demo is full. It resets every night.';
 
 const demoNoticeText =
@@ -126,7 +143,7 @@ class DemoNotice extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     return Container(
       width: double.infinity,
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: scheme.secondaryContainer,
