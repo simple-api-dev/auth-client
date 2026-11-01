@@ -1,5 +1,5 @@
 // Replays REAL responses captured from https://auth.simpleapi.dev on
-// 2026-10-31 (see tool/live_check/REPORT.md) through the app's AuthApi, to
+// 2026-10-31 through the app's AuthApi, to
 // check the app copes with the exact status codes and bodies the live API
 // sends. Bodies are written the way they arrive on the wire (PHP escapes `/`
 // as `\/` and non-ASCII as `\uXXXX`). Emails are throwaway addresses; there
@@ -96,7 +96,7 @@ void main() {
         final e = await _fail((a) => a.me(), 401, body);
         expect(e.isBadKey, isTrue);
         expect(e.isBadSession, isFalse);
-        expect(e.plain, startsWith('The API key was not accepted'));
+        expect(describeError(e), startsWith('The API key was not accepted'));
         final login = await _fail((a) => a.login(email: 'a@example.test', password: 'x'), 401, body);
         expect(login.isBadKey, isTrue);
       }
@@ -115,7 +115,7 @@ void main() {
           final e = await _fail(call, 401, body);
           expect(e.isBadKey, isFalse, reason: body);
           expect(e.isBadSession, isTrue, reason: body);
-          expect(e.plain, 'Your session has ended. Please log in again.');
+          expect(describeError(e), 'Your session has ended. Please log in again.');
         }
       }
     });
@@ -125,7 +125,7 @@ void main() {
           '{"message":"Invalid email or password."}');
       expect(e.isBadSession, isFalse);
       expect(e.isBadKey, isFalse);
-      expect(e.plain, 'Wrong email or password.');
+      expect(describeError(e), 'Invalid email or password.');
     });
   });
 
@@ -133,27 +133,27 @@ void main() {
     test('PUT /me wrong current_password', () async {
       final e = await _fail((a) => a.updateMe(email: 'n@example.test', currentPassword: 'x'), 403,
           '{"message":"current_password is wrong."}');
-      expect(e.plain, 'The current password is wrong.');
+      expect(describeError(e), 'current_password is wrong.');
       expect(e.isBadSession, isFalse);
     });
 
     test('DELETE /me wrong password', () async {
       final e = await _fail((a) => a.deleteMe('x'), 403, '{"message":"Wrong password."}');
-      expect(e.plain, 'The current password is wrong.');
+      expect(describeError(e), 'Wrong password.');
     });
   });
 
   group('404 / 405 (never produced by the app, but must not crash)', () {
     test('404 unknown route', () async {
       final e = await _fail((a) => a.me(), 404, '{"message":"Not a valid api route - not found."}');
-      expect(e.plain, 'Not a valid api route - not found. (HTTP 404)');
+      expect(describeError(e), 'Not found. It may already have been deleted.');
     });
 
     test('empty / non-JSON error body', () async {
       final e = await _fail((a) => a.me(), 405, '');
-      expect(e.plain, 'Something went wrong (HTTP 405).');
+      expect(describeError(e), 'Something went wrong (HTTP 405).');
       final h = await _fail((a) => a.me(), 502, '<html>Bad gateway</html>');
-      expect(h.plain, 'Something went wrong (HTTP 502).');
+      expect(describeError(h), 'Something went wrong (HTTP 502).');
     });
   });
 
@@ -162,13 +162,13 @@ void main() {
     test('register duplicate', () async {
       final e = await _fail(
           (a) => a.register(name: 'n', email: 'a@example.test', password: 'x' * 8), 409, msg);
-      expect(e.plain, 'That email is already registered.');
+      expect(describeError(e), 'That email is already registered.');
     });
 
     test('PUT /me change email to an existing one', () async {
       final e = await _fail(
           (a) => a.updateMe(email: 'a@example.test', currentPassword: 'x'), 409, msg);
-      expect(e.plain, 'That email is already registered.');
+      expect(describeError(e), 'That email is already registered.');
     });
   });
 
@@ -177,14 +177,14 @@ void main() {
       final e = await _fail(
           (a) => a.register(name: 'n', email: 'bad', password: 'x' * 8), 422,
           '{"message":"The email must be a valid email address."}');
-      expect(e.plain, 'The email must be a valid email address.');
+      expect(describeError(e), 'The email must be a valid email address.');
     });
 
     test('several problems arrive joined in ONE message string (two spaces between)', () async {
       final e = await _fail((a) => a.register(name: '', email: '', password: ''), 422,
           '{"message":"The name field is required.  The email field is required.  The password field is required."}');
-      expect(e.plain, contains('The name field is required.'));
-      expect(e.plain, contains('The password field is required.'));
+      expect(describeError(e), contains('The name field is required.'));
+      expect(describeError(e), contains('The password field is required.'));
     });
 
     test('password rules', () async {
@@ -195,14 +195,14 @@ void main() {
       ]) {
         final e = await _fail((a) => a.updateMe(password: 'x', currentPassword: 'y'), 422,
             '{"message":"$m"}');
-        expect(e.plain, m);
+        expect(describeError(e), m);
       }
     });
 
     test('PUT /me without current_password (the API answers 422, not 403)', () async {
       final e = await _fail((a) => a.updateMe(email: 'n@example.test'), 422,
           r'{"message":"The current password field is required when email \/ password is present."}');
-      expect(e.plain, contains('current password field is required'));
+      expect(describeError(e), contains('current password field is required'));
     });
   });
 
@@ -210,8 +210,7 @@ void main() {
     test('verify email', () async {
       final e = await _fail((a) => a.verifyEmail('000000'), 400,
           '{"message":"Invalid or expired verification code."}');
-      expect(e.plain, startsWith('That code is wrong or has expired.'));
-      expect(e.plain, contains('Invalid or expired verification code.'));
+      expect(describeError(e), 'Invalid or expired verification code.');
     });
 
     test('reset password', () async {
@@ -219,7 +218,7 @@ void main() {
           (a) => a.resetPassword(email: 'a@example.test', code: '000000', password: 'x' * 8),
           400,
           '{"message":"Invalid or expired reset code."}');
-      expect(e.plain, startsWith('That code is wrong or has expired.'));
+      expect(describeError(e), 'Invalid or expired reset code.');
     });
   });
 
@@ -230,8 +229,7 @@ void main() {
       expect(e.isBadSession, isFalse);
       expect(e.isRateLimited, isFalse);
       expect(e.retryAfter, isNull);
-      expect(e.plain, startsWith('Too many failed log-in attempts.'));
-      expect(e.plain, contains('15 minutes'));
+      expect(describeError(e), 'Too many failed logins for this email.  Please try again in a few minutes.');
     });
 
     test('login lockout, new text + Retry-After header', () async {
@@ -240,28 +238,27 @@ void main() {
           headers: {'retry-after': '725'});
       expect(e.retryAfter, const Duration(seconds: 725));
       expect(e.isRateLimited, isFalse);
-      expect(e.plain, contains('locked for up to 15 minutes'));
-      expect(e.plain, endsWith('Try again in about 13 minutes.'));
+      expect(describeError(e), 'Too many failed logins for this email.  Please try again in 15 minutes.');
     });
 
     test('general rate limit on login is not shown as a lockout', () async {
       final e = await _fail((a) => a.login(email: 'a@example.test', password: 'x'), 429,
-          '{"message":"Rate limit exceeded: 20 requests per minute.  Please try again in 31 seconds."}',
+          '{"message":"Rate limit exceeded: 60 requests per minute.  Please try again in 31 seconds."}',
           headers: {'retry-after': '31', 'x-ratelimit-remaining': '0'});
       expect(e.isRateLimited, isTrue);
       expect(e.retryAfter, const Duration(seconds: 31));
-      expect(e.plain, 'Too many requests from your network. Try again in 31 seconds.');
+      expect(describeError(e), 'Too many requests. Wait a few seconds and try again.');
     });
 
     test('rate limit without a readable Retry-After (browser did not expose it)', () async {
       final e = await _fail((a) => a.me(), 429,
-          '{"message":"Rate limit exceeded: 20 requests per minute.  Please try again in 31 seconds."}');
+          '{"message":"Rate limit exceeded: 60 requests per minute.  Please try again in 31 seconds."}');
       expect(e.retryAfter, isNull);
-      expect(e.plain, 'Too many requests from your network. Wait a moment and try again.');
+      expect(describeError(e), 'Too many requests. Wait a few seconds and try again.');
     });
 
     test('garbage Retry-After is ignored', () async {
-      final e = await _fail((a) => a.me(), 429, '{"message":"Rate limit exceeded: 20 requests per minute."}',
+      final e = await _fail((a) => a.me(), 429, '{"message":"Rate limit exceeded: 60 requests per minute."}',
           headers: {'retry-after': 'Wed, 21 Oct 2026 07:28:00 GMT'});
       expect(e.retryAfter, isNull);
     });
@@ -269,14 +266,14 @@ void main() {
     test('send-code one-per-minute', () async {
       final e = await _fail((a) => a.sendVerificationCode(), 429,
           '{"message":"A code was sent a moment ago.  Please wait a minute before asking for another."}');
-      expect(e.plain, startsWith('Please wait a minute'));
+      expect(describeError(e), 'A code was sent a moment ago.  Please wait a minute before asking for another.');
     });
 
     test('a generic gateway throttle on a protected route is not mistaken for a lockout', () async {
       // The sibling Reviews API answers {"message":"Throttle Limit Exceeded"}; the Auth API was
       // never seen to send it, but the app must still show something sensible if it does.
       final e = await _fail((a) => a.me(), 429, '{"message":"Throttle Limit Exceeded"}');
-      expect(e.plain, 'Throttle Limit Exceeded (HTTP 429)');
+      expect(describeError(e), 'Throttle Limit Exceeded');
       expect(e.isBadSession, isFalse);
     });
   });
@@ -290,7 +287,7 @@ void main() {
       final e = await _fail((a) => a.checkKey(), 401,
           r'{"message":"Unauthorized.  Invalid apikey. Register for a free apikey at https:\/\/keys.simpleapi.dev using product URL https:\/\/auth.simpleapi.dev."}');
       expect(e.isBadKey, isTrue);
-      expect(e.plain, startsWith('The API key was not accepted'));
+      expect(describeError(e), startsWith('The API key was not accepted'));
     });
 
     test('bad key, current live message that echoes the key', () async {
@@ -306,10 +303,10 @@ void main() {
 
     test('rate limited while checking', () async {
       final e = await _fail((a) => a.checkKey(), 429,
-          '{"message":"Rate limit exceeded: 20 requests per minute.  Please try again in 9 seconds."}',
+          '{"message":"Rate limit exceeded: 60 requests per minute.  Please try again in 9 seconds."}',
           headers: {'retry-after': '9'});
       expect(e.isBadKey, isFalse);
-      expect(e.plain, contains('9 seconds'));
+      expect(describeError(e), 'Too many requests. Wait a few seconds and try again.');
     });
 
     test('missing key: real 401 is rethrown as a bad key', () async {
@@ -323,41 +320,39 @@ void main() {
     test('malformed JSON -> 400, shown plainly, never taken for a code error or a bad key', () async {
       final e = await _fail((a) => a.updateMe(name: 'x'), 400,
           '{"message":"Malformed JSON body.  Send a valid JSON object."}');
-      expect(e.isMalformedJson, isTrue);
       expect(e.isBadKey, isFalse);
-      expect(e.plain, contains('malformed JSON'));
+      expect(describeError(e), 'Malformed JSON body.  Send a valid JSON object.');
     });
 
     test('malformed JSON on the code routes is still malformed JSON, not "wrong code"', () async {
       final e = await _fail((a) => a.verifyEmail('123456'), 400,
           '{"message":"Malformed JSON body.  Send a valid JSON object."}');
-      expect(e.plain, isNot(contains('wrong or has expired')));
+      expect(describeError(e), 'Malformed JSON body.  Send a valid JSON object.');
     });
 
     test('wrong code is still a wrong code', () async {
       final e = await _fail((a) => a.verifyEmail('123456'), 400,
           '{"message":"Invalid or expired verification code."}');
-      expect(e.isMalformedJson, isFalse);
-      expect(e.plain, startsWith('That code is wrong or has expired'));
+      expect(describeError(e), 'Invalid or expired verification code.');
     });
 
     test('register with a@b -> 422 message is shown', () async {
       final e = await _fail((a) => a.register(name: 'X', email: 'a@b', password: 'x' * 8), 422,
           '{"message":"The email must be a valid email address."}');
-      expect(e.plain, 'The email must be a valid email address.');
+      expect(describeError(e), 'The email must be a valid email address.');
     });
 
     test('change email to a@b -> 422 message is shown', () async {
       final e = await _fail(
           (a) => a.updateMe(email: 'a@b', currentPassword: 'x' * 8), 422,
           '{"message":"The email must be a valid email address."}');
-      expect(e.plain, 'The email must be a valid email address.');
+      expect(describeError(e), 'The email must be a valid email address.');
     });
 
     test('empty name on update -> 422 message is shown', () async {
       final e = await _fail((a) => a.updateMe(name: ''), 422,
           '{"message":"The name field is required."}');
-      expect(e.plain, 'The name field is required.');
+      expect(describeError(e), 'The name field is required.');
     });
   });
 

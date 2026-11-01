@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 
-import '../app_controller.dart';
-import '../auth_api.dart';
-import '../widgets.dart';
+import '../app_state.dart';
+import '../models.dart';
+import 'ui.dart';
 
 /// Shows the profile and edits the name: PUT /api/users/me {name}
 class ProfileSection extends StatefulWidget {
   const ProfileSection({super.key, required this.app, required this.user});
 
-  final AppController app;
+  final AppState app;
   final User user;
 
   @override
@@ -20,7 +20,7 @@ class _ProfileSectionState extends State<ProfileSection> with ActionState {
   late final _name = TextEditingController(text: widget.user.name);
 
   @override
-  AppController get app => widget.app;
+  AppState get app => widget.app;
 
   @override
   void didUpdateWidget(ProfileSection old) {
@@ -71,7 +71,7 @@ class _ProfileSectionState extends State<ProfileSection> with ActionState {
 class VerifyEmailSection extends StatefulWidget {
   const VerifyEmailSection({super.key, required this.app});
 
-  final AppController app;
+  final AppState app;
 
   @override
   State<VerifyEmailSection> createState() => _VerifyEmailSectionState();
@@ -82,7 +82,7 @@ class _VerifyEmailSectionState extends State<VerifyEmailSection> with ActionStat
   final _code = TextEditingController();
 
   @override
-  AppController get app => widget.app;
+  AppState get app => widget.app;
 
   @override
   void dispose() {
@@ -96,7 +96,7 @@ class _VerifyEmailSectionState extends State<VerifyEmailSection> with ActionStat
       key: _form,
       child: Section(
         title: 'Verify your email',
-        subtitle: 'Ask for a 6 digit code, then type it below. '
+        subtitle: 'Ask for a 6-digit code, then type it below. '
             'One email per minute; the code works once for 15 minutes.',
         children: [
           StatusText(error: error, info: info),
@@ -128,7 +128,7 @@ class _VerifyEmailSectionState extends State<VerifyEmailSection> with ActionStat
 class ChangeEmailSection extends StatefulWidget {
   const ChangeEmailSection({super.key, required this.app});
 
-  final AppController app;
+  final AppState app;
 
   @override
   State<ChangeEmailSection> createState() => _ChangeEmailSectionState();
@@ -140,7 +140,7 @@ class _ChangeEmailSectionState extends State<ChangeEmailSection> with ActionStat
   final _current = TextEditingController();
 
   @override
-  AppController get app => widget.app;
+  AppState get app => widget.app;
 
   @override
   void dispose() {
@@ -189,7 +189,7 @@ class _ChangeEmailSectionState extends State<ChangeEmailSection> with ActionStat
 class ChangePasswordSection extends StatefulWidget {
   const ChangePasswordSection({super.key, required this.app});
 
-  final AppController app;
+  final AppState app;
 
   @override
   State<ChangePasswordSection> createState() => _ChangePasswordSectionState();
@@ -201,7 +201,7 @@ class _ChangePasswordSectionState extends State<ChangePasswordSection> with Acti
   final _current = TextEditingController();
 
   @override
-  AppController get app => widget.app;
+  AppState get app => widget.app;
 
   @override
   void dispose() {
@@ -251,7 +251,7 @@ class _ChangePasswordSectionState extends State<ChangePasswordSection> with Acti
 class LogoutSection extends StatefulWidget {
   const LogoutSection({super.key, required this.app});
 
-  final AppController app;
+  final AppState app;
 
   @override
   State<LogoutSection> createState() => _LogoutSectionState();
@@ -259,7 +259,7 @@ class LogoutSection extends StatefulWidget {
 
 class _LogoutSectionState extends State<LogoutSection> with ActionState {
   @override
-  AppController get app => widget.app;
+  AppState get app => widget.app;
 
   Future<void> _logout({required bool all}) async {
     final ok = await run(() async {
@@ -298,7 +298,7 @@ class _LogoutSectionState extends State<LogoutSection> with ActionState {
 class DeleteAccountSection extends StatefulWidget {
   const DeleteAccountSection({super.key, required this.app});
 
-  final AppController app;
+  final AppState app;
 
   @override
   State<DeleteAccountSection> createState() => _DeleteAccountSectionState();
@@ -309,7 +309,7 @@ class _DeleteAccountSectionState extends State<DeleteAccountSection> with Action
   final _password = TextEditingController();
 
   @override
-  AppController get app => widget.app;
+  AppState get app => widget.app;
 
   @override
   void dispose() {

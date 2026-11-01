@@ -2,16 +2,18 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import 'auth_api.dart';
+
 import 'config.dart';
 import 'key_store.dart';
-import 'url_opener.dart';
+import 'models.dart';
+import 'open_url.dart';
 
 /// App-wide state: the key in use (the user's own, else the build key) and the logged-in user. Screens listen to
 /// it with ListenableBuilder; no state-management package is needed.
 ///
 /// The session token is kept in memory only, so reloading the page logs out.
-class AppController extends ChangeNotifier {
-  AppController({
+class AppState extends ChangeNotifier {
+  AppState({
     required this.keyStore,
     this.client,
     this.buildKey = configuredKey,

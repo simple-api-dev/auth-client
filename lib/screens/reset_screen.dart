@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 
-import '../app_controller.dart';
-import '../widgets.dart';
+import '../app_state.dart';
+import 'ui.dart';
 
 /// Forgot password: POST /api/users/forgot, then POST /api/users/reset.
 class ResetScreen extends StatefulWidget {
   const ResetScreen({super.key, required this.app});
 
-  final AppController app;
+  final AppState app;
 
   @override
   State<ResetScreen> createState() => _ResetScreenState();
@@ -25,7 +25,7 @@ class _ResetScreenState extends State<ResetScreen> {
   @override
   Widget build(BuildContext context) {
     return PageShell(
-      title: 'Forgot password',
+      title: 'Reset password',
       children: [
         _SendCode(app: widget.app, email: _email),
         _SetPassword(app: widget.app, email: _email),
@@ -37,7 +37,7 @@ class _ResetScreenState extends State<ResetScreen> {
 class _SendCode extends StatefulWidget {
   const _SendCode({required this.app, required this.email});
 
-  final AppController app;
+  final AppState app;
   final TextEditingController email;
 
   @override
@@ -48,7 +48,7 @@ class _SendCodeState extends State<_SendCode> with ActionState {
   final _form = GlobalKey<FormState>();
 
   @override
-  AppController get app => widget.app;
+  AppState get app => widget.app;
 
   @override
   Widget build(BuildContext context) {
@@ -56,7 +56,7 @@ class _SendCodeState extends State<_SendCode> with ActionState {
       key: _form,
       child: Section(
         title: '1. Email me a code',
-        subtitle: 'A 6 digit code is emailed if the account exists. '
+        subtitle: 'A 6-digit code is emailed if the account exists. '
             'The answer is always the same, so nobody can discover who is registered.',
         children: [
           StatusText(error: error, info: info),
@@ -80,7 +80,7 @@ class _SendCodeState extends State<_SendCode> with ActionState {
 class _SetPassword extends StatefulWidget {
   const _SetPassword({required this.app, required this.email});
 
-  final AppController app;
+  final AppState app;
   final TextEditingController email;
 
   @override
@@ -93,7 +93,7 @@ class _SetPasswordState extends State<_SetPassword> with ActionState {
   final _password = TextEditingController();
 
   @override
-  AppController get app => widget.app;
+  AppState get app => widget.app;
 
   @override
   void dispose() {

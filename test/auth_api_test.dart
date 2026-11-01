@@ -45,6 +45,22 @@ Future<ApiException> _fails(Future<Object?> Function(AuthApi) call, int status, 
 
 void main() {
   group('requests', () {
+    test('login and register never send the bearer token, even when one is set', () async {
+      final t = _api((_) => _json(200, _sessionJson), token: 'old-token');
+      await t.api.login(email: 'a@example.test', password: 'pw-12345678');
+      await t.api.register(name: 'n', email: 'a@example.test', password: 'pw-12345678');
+      expect(t.seen, hasLength(2));
+      for (final r in t.seen) {
+        expect(r.headers.containsKey('Authorization'), isFalse, reason: r.url.path);
+      }
+    });
+
+    test('a protected call sends the bearer token', () async {
+      final t = _api((_) => _json(200, _userJson), token: 'tok-9');
+      await t.api.me();
+      expect(t.seen.single.headers['Authorization'], 'Bearer tok-9');
+    });
+
     test('register posts the body and sends the key as a query parameter', () async {
       final t = _api((_) => _json(201, _sessionJson));
       final session = await t.api
@@ -146,27 +162,28 @@ void main() {
     test('wrong password on login', () async {
       final e = await _fails((a) => a.login(email: 'a@example.test', password: 'x'), 401,
           {'message': 'Invalid credentials'});
-      expect(e.plain, 'Wrong email or password.');
+      expect(describeError(e), 'Invalid credentials');
       expect(e.isBadSession, isFalse);
     });
 
     test('lockout after too many attempts', () async {
       final e = await _fails((a) => a.login(email: 'a@example.test', password: 'x'), 429,
-          {'message': 'Try again later'});
-      expect(e.plain, contains('locked for up to 15 minutes'));
+          {'message': 'Too many failed logins for this email.  Please try again in 15 minutes.'});
+      expect(e.isRateLimited, isFalse);
+      expect(describeError(e), 'Too many failed logins for this email.  Please try again in 15 minutes.');
     });
 
     test('bad key', () async {
       final e = await _fails((a) => a.login(email: 'a@example.test', password: 'x'), 401,
           {'message': 'Unauthorized.  Please provide a valid apikey.'});
       expect(e.isBadKey, isTrue);
-      expect(e.plain, contains('API key was not accepted'));
+      expect(describeError(e), 'The API key was not accepted. Check it under Settings.');
     });
 
     test('register 403 is the user cap, other 403s are not', () async {
       final cap = await _fails(
           (a) => a.register(name: 'n', email: 'e@example.test', password: 'pw-12345678'), 403,
-          {'message': 'Maximum number of users for a Basic account reached'});
+          {'message': 'Maximum number of users (25) per key has been reached.'});
       expect(cap.isUserCapReached, isTrue);
       final other = await _fails((a) => a.updateMe(name: 'x'), 403, {'message': 'x'}, token: 't');
       expect(other.isUserCapReached, isFalse);
@@ -190,16 +207,17 @@ void main() {
     test('expired token is a bad session', () async {
       final e = await _fails((a) => a.me(), 401, {'message': 'Unauthenticated.'}, token: 'old');
       expect(e.isBadSession, isTrue);
-      expect(e.plain, contains('log in again'));
+      expect(describeError(e), 'Your session has ended. Please log in again.');
     });
 
     test('register: duplicate email, full key, validation', () async {
       Future<Object?> reg(AuthApi a) =>
           a.register(name: 'n', email: 'e@example.test', password: 'pw-12345678');
-      expect((await _fails(reg, 409, {'message': 'taken'})).plain,
+      expect(describeError(await _fails(reg, 409, {'message': 'That email is already registered.'})),
           'That email is already registered.');
-      expect((await _fails(reg, 403, {'message': 'limit'})).plain, contains('25 users'));
-      expect((await _fails(reg, 422, {'message': 'The email must be a valid email address.'})).plain,
+      expect(describeError(await _fails(reg, 403, {'message': 'Maximum number of users (25) per key has been reached.'})),
+          'Maximum number of users (25) per key has been reached.');
+      expect(describeError(await _fails(reg, 422, {'message': 'The email must be a valid email address.'})),
           'The email must be a valid email address.');
     });
 
@@ -210,29 +228,37 @@ void main() {
           'email': ['The email must be valid.']
         },
       });
-      expect(e.plain, 'Validation failed. The email must be valid.');
+      expect(describeError(e), 'Validation failed. The email must be valid.');
     });
 
-    test('wrong current password is 403', () async {
+    test('wrong current password is 403 and shows the API message', () async {
       final e = await _fails(
-          (a) => a.updateMe(email: 'n@example.test', currentPassword: 'bad'), 403, {'message': 'x'},
+          (a) => a.updateMe(email: 'n@example.test', currentPassword: 'bad'), 403, {'message': 'current_password is wrong.'},
           token: 't');
-      expect(e.plain, 'The current password is wrong.');
+      expect(describeError(e), 'current_password is wrong.');
     });
 
-    test('bad or expired code', () async {
-      final e = await _fails((a) => a.verifyEmail('000000'), 400, {'message': 'Invalid or expired code'},
+    test('bad or expired code shows the API message', () async {
+      final e = await _fails((a) => a.verifyEmail('000000'), 400, {'message': 'Invalid or expired verification code.'},
           token: 't');
-      expect(e.plain, contains('wrong or has expired'));
+      expect(describeError(e), 'Invalid or expired verification code.');
     });
 
-    test('email limits', () async {
-      expect((await _fails((a) => a.sendVerificationCode(), 429, {'message': 'slow'}, token: 't')).plain,
-          contains('wait a minute'));
-      expect((await _fails((a) => a.forgotPassword('a@example.test'), 429, {'message': 'limit'})).plain,
-          contains('daily limit'));
-      expect((await _fails((a) => a.sendVerificationCode(), 409, {'message': 'x'}, token: 't')).plain,
-          contains('already verified'));
+    test('email limits show the API message', () async {
+      expect(describeError(await _fails((a) => a.sendVerificationCode(), 429, {'message': 'A code was sent a moment ago.'}, token: 't')),
+          'A code was sent a moment ago.');
+      expect(describeError(await _fails((a) => a.forgotPassword('a@example.test'), 429, {'message': 'Email limit reached for this key today, please try again tomorrow.'})),
+          'Email limit reached for this key today, please try again tomorrow.');
+      expect(describeError(await _fails((a) => a.sendVerificationCode(), 409, {'message': 'Email already verified.'}, token: 't')),
+          'Email already verified.');
+    });
+
+    test('the general rate limit and a missing item use the shared wording', () async {
+      final limited = await _fails((a) => a.me(), 429, {'message': 'Rate limit exceeded: 60 requests per minute.  Please try again in 31 seconds.'}, token: 't');
+      expect(limited.isRateLimited, isTrue);
+      expect(describeError(limited), 'Too many requests. Wait a few seconds and try again.');
+      final missing = await _fails((a) => a.me(), 404, {'message': 'User not found'}, token: 't');
+      expect(describeError(missing), 'Not found. It may already have been deleted.');
     });
 
     test('non-JSON error body still gives a message', () async {
@@ -240,8 +266,14 @@ void main() {
       final api = AuthApi(apiKey: 'k', client: client);
       await expectLater(
         api.login(email: 'a@example.test', password: 'x'),
-        throwsA(isA<ApiException>().having((e) => e.plain, 'plain', contains('HTTP 502'))),
+        throwsA(isA<ApiException>().having((e) => describeError(e), 'plain', contains('HTTP 502'))),
       );
+    });
+
+    test('network failure names the host', () async {
+      final api = AuthApi(apiKey: 'k', client: MockClient((_) async => throw http.ClientException('offline')));
+      final e = await api.me().then<ApiException>((_) => throw TestFailure('no error'), onError: (Object x) => x as ApiException);
+      expect(describeError(e), 'Could not reach auth.simpleapi.dev. Check your connection and try again.');
     });
 
     test('network failure', () async {

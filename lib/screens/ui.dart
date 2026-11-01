@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import 'app_controller.dart';
-import 'auth_api.dart';
+import '../app_state.dart';
+import '../auth_api.dart';
 
 /// A centered, scrollable page with a sensible maximum width.
 class PageShell extends StatelessWidget {
@@ -61,6 +61,7 @@ Widget field(
   TextEditingController controller,
   String label, {
   bool obscure = false,
+  String? helper,
   TextInputType? keyboard,
   String? Function(String?)? validator,
   void Function(String)? onSubmitted,
@@ -73,7 +74,7 @@ Widget field(
       keyboardType: keyboard,
       validator: validator,
       onFieldSubmitted: onSubmitted,
-      decoration: InputDecoration(labelText: label, border: const OutlineInputBorder()),
+      decoration: InputDecoration(labelText: label, helperText: helper, border: const OutlineInputBorder()),
     ),
   );
 }
@@ -139,7 +140,7 @@ class StatusText extends StatelessWidget {
 /// are turned into plain-language text; a 401 on a protected call means the
 /// token is gone, so the user is sent back to the log-in screen.
 mixin ActionState<T extends StatefulWidget> on State<T> {
-  AppController get app;
+  AppState get app;
 
   bool busy = false;
   String? error;
@@ -157,10 +158,10 @@ mixin ActionState<T extends StatefulWidget> on State<T> {
       if (mounted) setState(() => info = message);
       return true;
     } on ApiException catch (e) {
-      if (e.isBadSession) app.signOutLocal(notice: e.plain);
+      if (e.isBadSession) app.signOutLocal(notice: describeError(e));
       // The shared demo key holds only 25 users. Once they are used up nobody
       // can register, so say so and point to the way out.
-      final text = e.isUserCapReached && app.usingDemoKey ? demoFullMessage : e.plain;
+      final text = e.isUserCapReached && app.usingDemoKey ? demoFullMessage : describeError(e);
       if (mounted) setState(() => error = text);
       return false;
     } finally {

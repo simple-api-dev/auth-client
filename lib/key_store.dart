@@ -1,6 +1,6 @@
 import 'key_store_stub.dart' if (dart.library.js_interop) 'key_store_web.dart' as impl;
 
-/// Where the developer's SimpleApi key is remembered between visits.
+/// Where the developer's SimpleAPI key is remembered between visits.
 /// In the browser this is localStorage; the key is never part of the source.
 abstract class KeyStore {
   String? read();
