@@ -1,13 +1,11 @@
 import 'package:flutter/material.dart';
 
 import 'app_state.dart';
-import 'key_store.dart';
 import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
-import 'screens/no_key_screen.dart';
 
 void main() {
-  runApp(AuthClientApp(controller: AppState(keyStore: createKeyStore())));
+  runApp(AuthClientApp(controller: AppState()));
 }
 
 class AuthClientApp extends StatelessWidget {
@@ -18,17 +16,14 @@ class AuthClientApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'SimpleAPI Auth sample',
+      title: 'SimpleAPI Auth',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(colorSchemeSeed: const Color(0xFF0066CC), useMaterial3: true),
       // Which screen to show depends only on the controller's state.
       home: ListenableBuilder(
         listenable: controller,
-        builder: (context, _) {
-          if (!controller.hasKey) return NoKeyScreen(app: controller);
-          if (!controller.loggedIn) return LoginScreen(app: controller);
-          return HomeScreen(app: controller);
-        },
+        builder: (context, _) =>
+            controller.loggedIn ? HomeScreen(app: controller) : LoginScreen(app: controller),
       ),
     );
   }

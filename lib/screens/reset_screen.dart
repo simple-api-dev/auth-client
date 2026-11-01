@@ -56,7 +56,8 @@ class _SendCodeState extends State<_SendCode> with ActionState {
       key: _form,
       child: Section(
         title: '1. Email me a code',
-        subtitle: 'A 6-digit code is emailed if the account exists. '
+        subtitle:
+            'A 6-digit code is emailed if the account exists. '
             'The answer is always the same, so nobody can discover who is registered.',
         children: [
           StatusText(error: error, info: info),
@@ -65,7 +66,10 @@ class _SendCodeState extends State<_SendCode> with ActionState {
             onPressed: busy
                 ? null
                 : () {
-                    if (_form.currentState!.validate()) {
+                    if (!_form.currentState!.validate()) return;
+                    if (AppState.isDemoEmail(widget.email.text)) {
+                      refuse(demoLockedMessage);
+                    } else {
                       run(() => app.api.forgotPassword(widget.email.text.trim()));
                     }
                   },
@@ -104,6 +108,7 @@ class _SetPasswordState extends State<_SetPassword> with ActionState {
 
   Future<void> _reset() async {
     if (!_form.currentState!.validate()) return;
+    if (AppState.isDemoEmail(widget.email.text)) return refuse(demoLockedMessage);
     final ok = await run(() async {
       await app.api.resetPassword(
         email: widget.email.text.trim(),
@@ -124,17 +129,19 @@ class _SetPasswordState extends State<_SetPassword> with ActionState {
       key: _form,
       child: Section(
         title: '2. Set a new password',
-        subtitle: 'The code works once, expires after 15 minutes and allows 5 wrong attempts. '
+        subtitle:
+            'The code works once, expires after 15 minutes and allows 5 wrong attempts. '
             'Resetting logs out every session.',
         children: [
           StatusText(error: error, info: info),
           field(_code, 'Code from the email', keyboard: TextInputType.number, validator: notEmpty),
-          field(_password, 'New password (8 to 72 characters)',
-              obscure: true, validator: validPassword),
-          FilledButton(
-            onPressed: busy ? null : _reset,
-            child: const Text('Set new password'),
+          field(
+            _password,
+            'New password (8 to 72 characters)',
+            obscure: true,
+            validator: validPassword,
           ),
+          FilledButton(onPressed: busy ? null : _reset, child: const Text('Set new password')),
         ],
       ),
     );

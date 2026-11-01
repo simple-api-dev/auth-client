@@ -278,44 +278,6 @@ void main() {
     });
   });
 
-  group('checkKey() (GET /api/keys/check)', () {
-    test('good key: 200 {"valid":true}', () async {
-      await _api(200, '{"valid":true}').checkKey();
-    });
-
-    test('bad key, message without the key text (after the API fix)', () async {
-      final e = await _fail((a) => a.checkKey(), 401,
-          r'{"message":"Unauthorized.  Invalid apikey. Register for a free apikey at https:\/\/keys.simpleapi.dev using product URL https:\/\/auth.simpleapi.dev."}');
-      expect(e.isBadKey, isTrue);
-      expect(describeError(e), startsWith('The API key was not accepted'));
-    });
-
-    test('bad key, current live message that echoes the key', () async {
-      final e = await _fail((a) => a.checkKey(), 401,
-          r'{"message":"Unauthorized.  Invalid apikey detected [00000000-0000-0000-0000-000000000000]. Register for a free apikey at https:\/\/keys.simpleapi.dev using product URL https:\/\/auth.simpleapi.dev."}');
-      expect(e.isBadKey, isTrue);
-    });
-
-    test('a 401 from keys/check is a bad key whatever the wording', () async {
-      final e = await _fail((a) => a.checkKey(), 401, '{"message":"Nope."}');
-      expect(e.isBadKey, isTrue);
-    });
-
-    test('rate limited while checking', () async {
-      final e = await _fail((a) => a.checkKey(), 429,
-          '{"message":"Rate limit exceeded: 60 requests per minute.  Please try again in 9 seconds."}',
-          headers: {'retry-after': '9'});
-      expect(e.isBadKey, isFalse);
-      expect(describeError(e), 'Too many requests. Wait a few seconds and try again.');
-    });
-
-    test('missing key: real 401 is rethrown as a bad key', () async {
-      final e = await _fail((a) => a.checkKey(), 401,
-          r'{"message":"Unauthorized.  Please provide a valid apikey. Register for a free apikey at https:\/\/keys.simpleapi.dev using product URL https:\/\/auth.simpleapi.dev."}');
-      expect(e.isBadKey, isTrue);
-    });
-  });
-
   group('new live validation answers', () {
     test('malformed JSON -> 400, shown plainly, never taken for a code error or a bad key', () async {
       final e = await _fail((a) => a.updateMe(name: 'x'), 400,

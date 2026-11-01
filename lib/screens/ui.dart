@@ -2,19 +2,34 @@ import 'package:flutter/material.dart';
 
 import '../app_state.dart';
 import '../auth_api.dart';
+import '../config.dart';
 
 /// A centered, scrollable page with a sensible maximum width.
 class PageShell extends StatelessWidget {
-  const PageShell({super.key, required this.title, required this.children, this.actions});
+  const PageShell({super.key, required this.title, required this.children, this.actions, this.app});
 
   final String title;
   final List<Widget> children;
   final List<Widget>? actions;
 
+  /// Pass the app on top-level screens: they get a back arrow to simpleapi.dev. Inner screens leave it null and
+  /// keep the normal in-app back arrow.
+  final AppState? app;
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(title), actions: actions),
+      appBar: AppBar(
+        leading: app == null
+            ? null
+            : IconButton(
+                tooltip: 'Back to SimpleAPI',
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () => app!.openUrl(homeUrl),
+              ),
+        title: Text(title),
+        actions: actions,
+      ),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 560),
@@ -74,13 +89,16 @@ Widget field(
       keyboardType: keyboard,
       validator: validator,
       onFieldSubmitted: onSubmitted,
-      decoration: InputDecoration(labelText: label, helperText: helper, border: const OutlineInputBorder()),
+      decoration: InputDecoration(
+        labelText: label,
+        helperText: helper,
+        border: const OutlineInputBorder(),
+      ),
     ),
   );
 }
 
-String? notEmpty(String? value) =>
-    (value == null || value.trim().isEmpty) ? 'Required' : null;
+String? notEmpty(String? value) => (value == null || value.trim().isEmpty) ? 'Required' : null;
 
 String? validPassword(String? value) {
   if (value == null || value.length < 8) return 'At least 8 characters';
@@ -88,10 +106,18 @@ String? validPassword(String? value) {
   return null;
 }
 
-const demoFullMessage = 'The demo is full: its shared key has reached the free '
-    'limit of 25 users. Use your own free key under Settings to try registering.';
+const demoFullMessage = 'The demo is full. It resets every night.';
 
-/// Shown on the register screen while the shared demo key is in use.
+const demoNoticeText =
+    'This is a shared demo. Data resets every night. '
+    'Do not use a real password or any private details.';
+
+/// Shown when someone tries to change or delete the shared demo account, which would lock everyone else out.
+const demoLockedMessage =
+    'The shared demo account cannot be changed or deleted. '
+    'Create your own account to try this.';
+
+/// Shown on the login and register screens.
 class DemoNotice extends StatelessWidget {
   const DemoNotice({super.key});
 
@@ -106,11 +132,7 @@ class DemoNotice extends StatelessWidget {
         color: scheme.secondaryContainer,
         borderRadius: BorderRadius.circular(8),
       ),
-      child: Text(
-        'Demo accounts are shared and public. Do not use a real password or '
-        'any private details.',
-        style: TextStyle(color: scheme.onSecondaryContainer),
-      ),
+      child: Text(demoNoticeText, style: TextStyle(color: scheme.onSecondaryContainer)),
     );
   }
 }
@@ -146,6 +168,12 @@ mixin ActionState<T extends StatefulWidget> on State<T> {
   String? error;
   String? info;
 
+  /// Shows [message] as the error without calling the API (used to protect the shared demo account).
+  void refuse(String message) => setState(() {
+    error = message;
+    info = null;
+  });
+
   /// Returns true when the action succeeded.
   Future<bool> run(Future<String?> Function() action) async {
     setState(() {
@@ -159,9 +187,8 @@ mixin ActionState<T extends StatefulWidget> on State<T> {
       return true;
     } on ApiException catch (e) {
       if (e.isBadSession) app.signOutLocal(notice: describeError(e));
-      // The shared demo key holds only 25 users. Once they are used up nobody
-      // can register, so say so and point to the way out.
-      final text = e.isUserCapReached && app.usingDemoKey ? demoFullMessage : describeError(e);
+      // The demo key holds only 25 users. Once they are used up nobody can register, so say so.
+      final text = e.isUserCapReached ? demoFullMessage : describeError(e);
       if (mounted) setState(() => error = text);
       return false;
     } finally {
