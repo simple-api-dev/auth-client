@@ -46,11 +46,14 @@ class _HomeScreenState extends State<HomeScreen> with ActionState {
       children: [
         StatusText(error: error),
         ProfileSection(app: app, user: user),
-        if (!user.emailVerified) VerifyEmailSection(app: app),
-        ChangeEmailSection(app: app),
-        ChangePasswordSection(app: app),
+        // the shared demo account is never offered these: one visitor could lock out the rest
+        if (!app.isDemoUser) ...[
+          if (!user.emailVerified) VerifyEmailSection(app: app),
+          ChangeEmailSection(app: app),
+          ChangePasswordSection(app: app),
+        ],
         LogoutSection(app: app),
-        DeleteAccountSection(app: app),
+        if (!app.isDemoUser) DeleteAccountSection(app: app),
       ],
     );
   }

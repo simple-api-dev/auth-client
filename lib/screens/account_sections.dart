@@ -167,7 +167,6 @@ class _ChangeEmailSectionState extends State<ChangeEmailSection> with ActionStat
                 ? null
                 : () async {
                     if (!_form.currentState!.validate()) return;
-                    if (app.isDemoUser) return refuse(demoLockedMessage);
                     final ok = await run(() async {
                       app.updateUser(
                         await app.api.updateMe(
@@ -231,7 +230,6 @@ class _ChangePasswordSectionState extends State<ChangePasswordSection> with Acti
                 ? null
                 : () async {
                     if (!_form.currentState!.validate()) return;
-                    if (app.isDemoUser) return refuse(demoLockedMessage);
                     final ok = await run(() async {
                       app.updateUser(
                         await app.api.updateMe(password: _new.text, currentPassword: _current.text),
@@ -323,7 +321,6 @@ class _DeleteAccountSectionState extends State<DeleteAccountSection> with Action
 
   Future<void> _delete() async {
     if (!_form.currentState!.validate()) return;
-    if (app.isDemoUser) return refuse(demoLockedMessage);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(

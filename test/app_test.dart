@@ -362,37 +362,12 @@ void main() {
       return h;
     }
 
-    testWidgets('account deletion is refused without an API call', (tester) async {
-      final h = await demo(tester);
-      await tester.enterText(find.widgetWithText(TextFormField, 'Password'), 'try-the-demo');
-      await _tapText(tester, 'Delete my account');
-      expect(find.text(demoLockedMessage), findsOneWidget);
-      expect(find.text('Delete account?'), findsNothing);
-      expect(h.requests, isEmpty);
-    });
-
-    testWidgets('password change is refused without an API call', (tester) async {
-      final h = await demo(tester);
-      await _type(tester, 'New password (8 to 72 characters)', 'another-pass-1');
-      await tester.enterText(find.widgetWithText(TextFormField, 'Current password').last, 'try-the-demo');
-      final button = find.widgetWithText(FilledButton, 'Change password');
-      await tester.ensureVisible(button);
-      await tester.tap(button);
-      await tester.pumpAndSettle();
-      expect(find.text(demoLockedMessage), findsOneWidget);
-      expect(h.requests, isEmpty);
-    });
-
-    testWidgets('email change is refused without an API call', (tester) async {
-      final h = await demo(tester);
-      await _type(tester, 'New email', 'other@example.test');
-      await tester.enterText(find.widgetWithText(TextFormField, 'Current password').first, 'try-the-demo');
-      final button = find.widgetWithText(FilledButton, 'Change email');
-      await tester.ensureVisible(button);
-      await tester.tap(button);
-      await tester.pumpAndSettle();
-      expect(find.text(demoLockedMessage), findsOneWidget);
-      expect(h.requests, isEmpty);
+    testWidgets('account changes are not offered', (tester) async {
+      await demo(tester);
+      for (final text in ['Verify your email', 'Change email', 'Change password', 'Delete my account']) {
+        expect(find.text(text), findsNothing);
+      }
+      expect(find.text('Your account'), findsOneWidget);
     });
 
     testWidgets('the password reset flow is refused for the demo email', (tester) async {
