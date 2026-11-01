@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../app_state.dart';
+import '../config.dart';
 import 'ui.dart';
 import 'register_screen.dart';
 import 'reset_screen.dart';
-import 'settings_screen.dart';
 
 /// POST /api/users/login
 class LoginScreen extends StatefulWidget {
@@ -40,23 +40,45 @@ class _LoginScreenState extends State<LoginScreen> with ActionState {
     });
   }
 
+  /// One click: log in as the shared demo user.
+  Future<void> _tryDemo() => run(() async {
+    app.signIn(await app.api.login(email: demoEmail, password: demoPassword));
+    return null;
+  });
+
   @override
   Widget build(BuildContext context) {
     return PageShell(
-      title: 'Log in',
+      title: 'SimpleAPI Auth',
+      app: app,
       children: [
+        Section(
+          title: 'See it working',
+          subtitle: 'One click logs you in as the shared demo user. No signup needed.',
+          children: [
+            FilledButton(
+              onPressed: busy ? null : _tryDemo,
+              child: Text(busy ? 'Please wait...' : 'Try the demo account'),
+            ),
+          ],
+        ),
         Form(
           key: _form,
           child: Section(
             title: 'Log in',
-            subtitle: 'After 5 wrong passwords an email is locked for 15 minutes.'
-                '${app.usingDemoKey ? ' This demo shares one key, so accounts are public.' : ''}',
+            subtitle: 'After 5 wrong passwords an email is locked for 15 minutes.',
             children: [
+              const DemoNotice(),
               StatusText(error: error ?? app.notice, info: info),
               field(_email, 'Email', keyboard: TextInputType.emailAddress, validator: notEmpty),
-              field(_password, 'Password',
-                  obscure: true, validator: notEmpty, onSubmitted: (_) => _login()),
-              FilledButton(
+              field(
+                _password,
+                'Password',
+                obscure: true,
+                validator: notEmpty,
+                onSubmitted: (_) => _login(),
+              ),
+              FilledButton.tonal(
                 onPressed: busy ? null : _login,
                 child: Text(busy ? 'Logging in...' : 'Log in'),
               ),
@@ -67,19 +89,16 @@ class _LoginScreenState extends State<LoginScreen> with ActionState {
           spacing: 8,
           children: [
             TextButton(
-              onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(builder: (_) => RegisterScreen(app: app))),
+              onPressed: () =>
+                  Navigator.of(context)
+                      .push(MaterialPageRoute<void>(builder: (_) => RegisterScreen(app: app))),
               child: const Text('Create an account'),
             ),
             TextButton(
-              onPressed: () => Navigator.of(context)
-                  .push(MaterialPageRoute<void>(builder: (_) => ResetScreen(app: app))),
+              onPressed: () =>
+                  Navigator.of(context)
+                      .push(MaterialPageRoute<void>(builder: (_) => ResetScreen(app: app))),
               child: const Text('Forgot password?'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(builder: (_) => SettingsScreen(app: app))),
-              child: const Text('Settings'),
             ),
           ],
         ),

@@ -1,8 +1,9 @@
 import 'dart:convert';
 
 import 'package:auth_client/app_state.dart';
-import 'package:auth_client/key_store.dart';
+import 'package:auth_client/config.dart';
 import 'package:auth_client/main.dart';
+import 'package:auth_client/screens/ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -27,12 +28,10 @@ http.Response _json(int status, Object body) =>
 class Harness {
   Harness(
     http.Response Function(http.Request) handler, {
-    String buildKey = 'test-key',
-    String? ownKey,
-  }) : store = MemoryKeyStore(ownKey) {
+    String apiKey = 'test-key',
+  }) {
     controller = AppState(
-      keyStore: store,
-      buildKey: buildKey,
+      apiKey: apiKey,
       urlOpener: opened.add,
       client: MockClient((request) async {
         requests.add(request);
@@ -41,7 +40,6 @@ class Harness {
     );
   }
 
-  final MemoryKeyStore store;
   late final AppState controller;
   final requests = <http.Request>[];
   final opened = <String>[];
@@ -72,86 +70,75 @@ Future<void> _submitLogin(WidgetTester tester, {String password = 'pw-12345678'}
 }
 
 void main() {
-  // ---- Keys ----------------------------------------------------------------
+  // ---- Demo experience -----------------------------------------------------
 
-  testWidgets('with a build key the app opens on log in and uses that key', (tester) async {
-    final h = Harness((_) => _json(401, {'message': 'Invalid credentials'}), buildKey: 'build-key');
+  testWidgets('opens on log in with the demo button, notice and no key or settings UI', (tester) async {
+    final h = Harness((_) => _json(401, {'message': 'Invalid credentials'}), apiKey: 'build-key');
     await h.pump(tester);
 
+    expect(find.widgetWithText(FilledButton, 'Try the demo account'), findsOneWidget);
     expect(find.widgetWithText(FilledButton, 'Log in'), findsOneWidget);
-    expect(find.text('This demo has no key configured'), findsNothing);
+    expect(find.text('Settings'), findsNothing);
+    expect(find.textContaining('API key'), findsNothing);
+    expect(find.text(demoNoticeText), findsOneWidget);
     expect(h.requests, isEmpty);
 
     await _submitLogin(tester);
     expect(h.requests.single.url.queryParameters['apikey'], 'build-key');
   });
 
-  testWidgets('with no key it says so, offers a key link and makes no API calls', (tester) async {
-    final h = Harness((_) => _json(200, {}), buildKey: '');
-    await h.pump(tester);
-
-    expect(find.text('This demo has no key configured'), findsOneWidget);
-    expect(find.widgetWithText(FilledButton, 'Log in'), findsNothing);
-    await _tapText(tester, 'Get a free key');
-
-    expect(h.opened, ['https://keys.simpleapi.dev/?product=auth']);
-    expect(h.requests, isEmpty);
-  });
-
-  testWidgets('a valid own key is checked, stored and overrides the build key', (tester) async {
-    // GET /api/keys/check answers 200 for a good key.
+  testWidgets('Try the demo account logs in as the shared demo user in one click', (tester) async {
     final h = Harness((r) {
-      if (r.url.queryParameters['apikey'] == 'my-key' &&
-          r.method == 'GET' &&
-          r.url.path == '/api/keys/check') {
-        return _json(200, {'valid': true});
+      if (r.url.path == '/api/users/login') {
+        return _json(200, {..._session, 'user': {..._user, 'email': demoEmail}});
       }
-      return _json(401, {'message': 'Invalid credentials'});
-    }, buildKey: 'build-key');
+      return _json(200, {..._user, 'email': demoEmail});
+    });
     await h.pump(tester);
+    await _tapText(tester, 'Try the demo account');
 
-    await _tapText(tester, 'Settings');
-    await _type(tester, 'API key', '  my-key  ');
-    await _tapText(tester, 'Save key');
-
-    expect(h.store.read(), 'my-key');
-    expect(h.controller.apiKey, 'my-key');
-    expect(h.requests.single.url.queryParameters['apikey'], 'my-key');
-    expect(find.widgetWithText(FilledButton, 'Log in'), findsOneWidget);
-
-    await _submitLogin(tester);
-    expect(h.requests.last.url.queryParameters['apikey'], 'my-key');
+    final login = h.requests.firstWhere((r) => r.url.path == '/api/users/login');
+    expect(jsonDecode(login.body), {'email': 'demo@simpleapi.dev', 'password': 'try-the-demo'});
+    expect(login.headers.containsKey('Authorization'), isFalse);
+    expect(find.text('Your account'), findsOneWidget);
   });
 
-  testWidgets('a rejected key is not stored', (tester) async {
-    final h = Harness(
-        (_) => _json(401, {'message': 'Unauthorized.  Invalid apikey detected [nope].'}),
-        buildKey: 'build-key');
+  testWidgets('top-level screens have a back arrow that opens simpleapi.dev', (tester) async {
+    final h = Harness((_) => _json(401, {'message': 'x'}));
     await h.pump(tester);
 
-    await _tapText(tester, 'Settings');
-    await _type(tester, 'API key', 'nope');
-    await _tapText(tester, 'Save key');
+    expect(find.byTooltip('Back to SimpleAPI'), findsOneWidget);
+    await tester.tap(find.byTooltip('Back to SimpleAPI'));
+    expect(h.opened, ['https://simpleapi.dev']);
 
-    expect(find.textContaining('API key was not accepted'), findsOneWidget);
-    expect(h.store.read(), isNull);
-    expect(h.controller.apiKey, 'build-key');
+    // An inner screen keeps the normal in-app back arrow.
+    await _tapText(tester, 'Create an account');
+    expect(find.byTooltip('Back to SimpleAPI'), findsNothing);
+    expect(find.byType(BackButton), findsOneWidget);
   });
 
-  testWidgets('go back to the demo key clears the own key', (tester) async {
-    final h = Harness((_) => _json(401, {'message': 'Invalid credentials'}),
-        buildKey: 'build-key', ownKey: 'my-key');
+  testWidgets('the logged-in screen also has the back arrow', (tester) async {
+    final h = Harness((r) => r.url.path == '/api/users/login' ? _json(200, _session) : _json(200, _user));
     await h.pump(tester);
-    expect(h.controller.apiKey, 'my-key');
-
-    await _tapText(tester, 'Settings');
-    await _tapText(tester, 'Go back to the demo key');
-
-    expect(h.store.read(), isNull);
-    expect(h.controller.apiKey, 'build-key');
-    expect(find.widgetWithText(FilledButton, 'Log in'), findsOneWidget);
     await _submitLogin(tester);
-    expect(h.requests.single.url.queryParameters['apikey'], 'build-key');
+    expect(find.text('Your account'), findsOneWidget);
+    expect(find.byTooltip('Back to SimpleAPI'), findsOneWidget);
+  });
+
+  testWidgets('app bar titles are short and leave room for the back arrow at 360px wide', (tester) async {
+    // The test font (Ahem) is wider than Roboto, so a pixel measurement here would be wrong. In the real font
+    // 'SimpleAPI Auth' is about 150px; the bar offers about 360 - 56 (back arrow) - 16 = 288px.
+    final h = Harness((_) => _json(401, {'message': 'x'}));
+    tester.view.physicalSize = const Size(360, 740);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(AuthClientApp(controller: h.controller));
+
+    final bar = tester.widget<AppBar>(find.byType(AppBar));
+    expect((bar.title as Text).data, 'SimpleAPI Auth');
+    expect((bar.title as Text).data!.length, lessThanOrEqualTo(16));
+    expect(bar.actions, isNull);
+    expect(bar.leading, isNotNull);
   });
 
   // ---- User cap on the shared demo key ----------------------------------
@@ -173,14 +160,6 @@ void main() {
     expect(find.widgetWithText(TextFormField, 'Password'), findsOneWidget);
   });
 
-  testWidgets('settings uses the shared storage note and key status wording', (tester) async {
-    final h = Harness((_) => _json(401, {'message': 'x'}));
-    await h.pump(tester);
-    await _tapText(tester, 'Settings');
-    expect(find.textContaining('You are using the shared demo key.'), findsOneWidget);
-    expect(find.textContaining('Your key is stored only in this browser (localStorage) and sent only to auth.simpleapi.dev.'), findsOneWidget);
-  });
-
   testWidgets('forgot password screen is titled Reset password', (tester) async {
     final h = Harness((_) => _json(200, {'message': 'ok'}));
     await h.pump(tester);
@@ -189,39 +168,20 @@ void main() {
     expect(find.textContaining('6-digit code'), findsOneWidget);
   });
 
-  testWidgets('register shows a public-accounts notice on the demo key', (tester) async {
+  testWidgets('register shows the demo notice', (tester) async {
     final h = Harness((_) => _json(201, _session));
     await h.pump(tester);
     await _tapText(tester, 'Create an account');
-    expect(find.textContaining('shared and public'), findsOneWidget);
+    expect(find.text(demoNoticeText), findsOneWidget);
   });
 
-  testWidgets('no shared-account notice when using your own key', (tester) async {
-    final h = Harness((_) => _json(201, _session), ownKey: 'my-key');
-    await h.pump(tester);
-    await _tapText(tester, 'Create an account');
-    expect(find.textContaining('shared and public'), findsNothing);
-  });
-
-  testWidgets('user cap on the demo key says the demo is full', (tester) async {
+  testWidgets('user cap says the demo is full', (tester) async {
     final h = Harness((_) =>
         _json(403, {'message': 'Maximum number of users (25) per key has been reached.'}));
     await h.pump(tester);
     await fillRegister(tester);
 
-    expect(find.textContaining('The demo is full'), findsOneWidget);
-    expect(find.textContaining('under Settings'), findsOneWidget);
-  });
-
-  testWidgets('user cap on your own key keeps the plain 25 users message', (tester) async {
-    final h = Harness((_) =>
-        _json(403, {'message': 'Maximum number of users (25) per key has been reached.'}),
-        ownKey: 'my-key');
-    await h.pump(tester);
-    await fillRegister(tester);
-
-    expect(find.textContaining('The demo is full'), findsNothing);
-    expect(find.text('Maximum number of users (25) per key has been reached.'), findsOneWidget);
+    expect(find.text('The demo is full. It resets every night.'), findsOneWidget);
   });
 
   testWidgets('login success shows the profile loaded from /me', (tester) async {
@@ -382,6 +342,69 @@ void main() {
 
       expect(find.widgetWithText(FilledButton, 'Log in'), findsOneWidget);
       expect(find.textContaining('session has ended'), findsOneWidget);
+    });
+  });
+
+  group('shared demo user is protected', () {
+    final demoUser = {..._user, 'email': demoEmail};
+    http.Response handler(http.Request r) {
+      if (r.url.path == '/api/users/login') return _json(200, {..._session, 'user': demoUser});
+      if (r.url.path == '/api/users/me' && r.method == 'GET') return _json(200, demoUser);
+      return _json(500, {'message': 'must not be called: ${r.method} ${r.url.path}'});
+    }
+
+    Future<Harness> demo(WidgetTester tester) async {
+      final h = Harness(handler);
+      await h.pump(tester);
+      await _tapText(tester, 'Try the demo account');
+      h.requests.clear();
+      return h;
+    }
+
+    testWidgets('account deletion is refused without an API call', (tester) async {
+      final h = await demo(tester);
+      await tester.enterText(find.widgetWithText(TextFormField, 'Password'), 'try-the-demo');
+      await _tapText(tester, 'Delete my account');
+      expect(find.text(demoLockedMessage), findsOneWidget);
+      expect(find.text('Delete account?'), findsNothing);
+      expect(h.requests, isEmpty);
+    });
+
+    testWidgets('password change is refused without an API call', (tester) async {
+      final h = await demo(tester);
+      await _type(tester, 'New password (8 to 72 characters)', 'another-pass-1');
+      await tester.enterText(find.widgetWithText(TextFormField, 'Current password').last, 'try-the-demo');
+      final button = find.widgetWithText(FilledButton, 'Change password');
+      await tester.ensureVisible(button);
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+      expect(find.text(demoLockedMessage), findsOneWidget);
+      expect(h.requests, isEmpty);
+    });
+
+    testWidgets('email change is refused without an API call', (tester) async {
+      final h = await demo(tester);
+      await _type(tester, 'New email', 'other@example.test');
+      await tester.enterText(find.widgetWithText(TextFormField, 'Current password').first, 'try-the-demo');
+      final button = find.widgetWithText(FilledButton, 'Change email');
+      await tester.ensureVisible(button);
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+      expect(find.text(demoLockedMessage), findsOneWidget);
+      expect(h.requests, isEmpty);
+    });
+
+    testWidgets('the password reset flow is refused for the demo email', (tester) async {
+      final h = Harness(handler);
+      await h.pump(tester);
+      await _tapText(tester, 'Forgot password?');
+      await _type(tester, 'Email', 'Demo@SimpleAPI.dev');
+      await _tapText(tester, 'Send code');
+      await _type(tester, 'Code from the email', '123456');
+      await _type(tester, 'New password (8 to 72 characters)', 'new-password-1');
+      await _tapText(tester, 'Set new password');
+      expect(find.text(demoLockedMessage), findsNWidgets(2));
+      expect(h.requests, isEmpty);
     });
   });
 

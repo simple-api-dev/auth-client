@@ -42,7 +42,8 @@ class _ProfileSectionState extends State<ProfileSection> with ActionState {
       key: _form,
       child: Section(
         title: 'Profile',
-        subtitle: 'Email: ${user.email}  '
+        subtitle:
+            'Email: ${user.email}  '
             '(${user.emailVerified ? 'verified' : 'not verified'})\n'
             'User id: ${user.id}'
             '${user.createdAt == null ? '' : '   Created: ${user.createdAt}'}',
@@ -96,7 +97,8 @@ class _VerifyEmailSectionState extends State<VerifyEmailSection> with ActionStat
       key: _form,
       child: Section(
         title: 'Verify your email',
-        subtitle: 'Ask for a 6-digit code, then type it below. '
+        subtitle:
+            'Ask for a 6-digit code, then type it below. '
             'One email per minute; the code works once for 15 minutes.',
         children: [
           StatusText(error: error, info: info),
@@ -165,11 +167,14 @@ class _ChangeEmailSectionState extends State<ChangeEmailSection> with ActionStat
                 ? null
                 : () async {
                     if (!_form.currentState!.validate()) return;
+                    if (app.isDemoUser) return refuse(demoLockedMessage);
                     final ok = await run(() async {
-                      app.updateUser(await app.api.updateMe(
-                        email: _email.text.trim(),
-                        currentPassword: _current.text,
-                      ));
+                      app.updateUser(
+                        await app.api.updateMe(
+                          email: _email.text.trim(),
+                          currentPassword: _current.text,
+                        ),
+                      );
                       return 'Email changed. Please verify the new address.';
                     });
                     if (ok) {
@@ -219,19 +224,18 @@ class _ChangePasswordSectionState extends State<ChangePasswordSection> with Acti
         subtitle: 'Needs your current password. Other devices are logged out.',
         children: [
           StatusText(error: error, info: info),
-          field(_new, 'New password (8 to 72 characters)',
-              obscure: true, validator: validPassword),
+          field(_new, 'New password (8 to 72 characters)', obscure: true, validator: validPassword),
           field(_current, 'Current password', obscure: true, validator: notEmpty),
           FilledButton(
             onPressed: busy
                 ? null
                 : () async {
                     if (!_form.currentState!.validate()) return;
+                    if (app.isDemoUser) return refuse(demoLockedMessage);
                     final ok = await run(() async {
-                      app.updateUser(await app.api.updateMe(
-                        password: _new.text,
-                        currentPassword: _current.text,
-                      ));
+                      app.updateUser(
+                        await app.api.updateMe(password: _new.text, currentPassword: _current.text),
+                      );
                       return 'Password changed.';
                     });
                     if (ok) {
@@ -319,16 +323,15 @@ class _DeleteAccountSectionState extends State<DeleteAccountSection> with Action
 
   Future<void> _delete() async {
     if (!_form.currentState!.validate()) return;
+    if (app.isDemoUser) return refuse(demoLockedMessage);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Delete account?'),
         content: const Text('This permanently deletes your account.'),
         actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          TextButton(
-              onPressed: () => Navigator.pop(context, true), child: const Text('Delete')),
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete')),
         ],
       ),
     );
@@ -351,8 +354,7 @@ class _DeleteAccountSectionState extends State<DeleteAccountSection> with Action
           StatusText(error: error, info: info),
           field(_password, 'Password', obscure: true, validator: notEmpty),
           FilledButton(
-            style: FilledButton.styleFrom(
-                backgroundColor: Theme.of(context).colorScheme.error),
+            style: FilledButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.error),
             onPressed: busy ? null : _delete,
             child: const Text('Delete my account'),
           ),

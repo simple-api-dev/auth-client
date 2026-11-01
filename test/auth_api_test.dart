@@ -177,7 +177,7 @@ void main() {
       final e = await _fails((a) => a.login(email: 'a@example.test', password: 'x'), 401,
           {'message': 'Unauthorized.  Please provide a valid apikey.'});
       expect(e.isBadKey, isTrue);
-      expect(describeError(e), 'The API key was not accepted. Check it under Settings.');
+      expect(describeError(e), 'The API key was not accepted.');
     });
 
     test('register 403 is the user cap, other 403s are not', () async {
@@ -187,21 +187,6 @@ void main() {
       expect(cap.isUserCapReached, isTrue);
       final other = await _fails((a) => a.updateMe(name: 'x'), 403, {'message': 'x'}, token: 't');
       expect(other.isUserCapReached, isFalse);
-    });
-
-    test('checkKey accepts a key when keys/check answers 200', () async {
-      final t = _api((_) => _json(200, {'valid': true}));
-      await t.api.checkKey();
-      expect(t.seen.single.method, 'GET');
-      expect(t.seen.single.url.path, '/api/keys/check');
-      expect(t.seen.single.url.queryParameters['apikey'], 'test-key');
-      expect(t.seen.single.body, isEmpty);
-    });
-
-    test('checkKey throws when the key is rejected', () async {
-      final t = _api((_) => _json(401, {'message': 'Unauthorized.  Invalid apikey detected [x].'}));
-      await expectLater(t.api.checkKey(),
-          throwsA(isA<ApiException>().having((e) => e.isBadKey, 'isBadKey', isTrue)));
     });
 
     test('expired token is a bad session', () async {

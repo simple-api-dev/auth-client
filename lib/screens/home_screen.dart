@@ -26,15 +26,16 @@ class _HomeScreenState extends State<HomeScreen> with ActionState {
 
   /// GET /api/users/me
   Future<void> _refresh() => run(() async {
-        app.updateUser(await app.api.me());
-        return null;
-      });
+    app.updateUser(await app.api.me());
+    return null;
+  });
 
   @override
   Widget build(BuildContext context) {
     final user = app.user!;
     return PageShell(
       title: 'Your account',
+      app: app,
       actions: [
         IconButton(
           tooltip: 'Reload profile',

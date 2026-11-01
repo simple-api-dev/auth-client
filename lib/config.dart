@@ -6,5 +6,9 @@
 /// key here, never your real one. The key is not stored in this repository.
 const configuredKey = String.fromEnvironment('SIMPLEAPI_KEY');
 
-/// Where people can get their own free key for this API.
-const getKeyUrl = 'https://keys.simpleapi.dev/?product=auth';
+/// The shared demo account. Public by design: anyone can log in with it.
+const demoEmail = 'demo@simpleapi.dev';
+const demoPassword = 'try-the-demo';
+
+/// Where the back arrow goes.
+const homeUrl = 'https://simpleapi.dev';

@@ -64,7 +64,7 @@ String describeError(ApiException e) {
   if (e.isNetworkError) {
     return 'Could not reach ${Uri.parse(e.host).host}. Check your connection and try again.';
   }
-  if (e.isBadKey) return 'The API key was not accepted. Check it under Settings.';
+  if (e.isBadKey) return 'The API key was not accepted.';
   if (e.isBadSession) return 'Your session has ended. Please log in again.';
   if (e.isRateLimited) return 'Too many requests. Wait a few seconds and try again.';
   switch (e.statusCode) {
@@ -97,16 +97,6 @@ class AuthApi {
   String? token;
 
   // ---- Public (no token) ---------------------------------------------------
-
-  /// Checks that the key is accepted, without creating anything.
-  ///
-  /// GET /api/keys/check answers 200 `{"valid": true}` for a good key and 401
-  /// for a missing or unknown one. It needs no login and touches no user.
-  /// Throws [ApiException] when the key is rejected or the API cannot be
-  /// reached.
-  Future<void> checkKey() async {
-    await _send('GET', '/api/keys/check');
-  }
 
   /// POST /api/users/register
   /// Creates a user and logs them in. 201 returns a Session.
