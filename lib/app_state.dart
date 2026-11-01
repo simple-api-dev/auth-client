@@ -27,7 +27,7 @@ class AppState extends ChangeNotifier {
 
   User? user;
 
-  /// A one-off message for the log-in screen (for example "session ended").
+  /// A one-off message for the login screen (for example "session ended").
   String? notice;
 
   bool get loggedIn => user != null;

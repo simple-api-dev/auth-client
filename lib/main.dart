@@ -16,7 +16,7 @@ class AuthClientApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'SimpleAPI Auth',
+      title: 'Auth API sample | SimpleAPI',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(colorSchemeSeed: const Color(0xFF0066CC), useMaterial3: true),
       // Which screen to show depends only on the controller's state.

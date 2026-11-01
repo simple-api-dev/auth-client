@@ -177,7 +177,7 @@ class StatusText extends StatelessWidget {
 ///
 /// The action returns a message to show on success (or null). API failures
 /// are turned into plain-language text; a 401 on a protected call means the
-/// token is gone, so the user is sent back to the log-in screen.
+/// token is gone, so the user is sent back to the login screen.
 mixin ActionState<T extends StatefulWidget> on State<T> {
   AppState get app;
 
