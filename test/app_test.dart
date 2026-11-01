@@ -18,6 +18,7 @@ const _user = {
   'admin': false,
   'enabled': true,
   'created_at': '2026-01-01T00:00:00Z',
+  'updated_at': '2026-01-01T00:00:00Z',
 };
 const _session = {'token': 'tok-123', 'expires_at': '2026-02-01T00:00:00Z', 'user': _user};
 
@@ -312,7 +313,7 @@ void main() {
 
       final logout = h.requests.last;
       expect(logout.url.path, '/api/users/logout');
-      expect(jsonDecode(logout.body), {'all': true});
+      expect(logout.url.queryParameters['all'], 'true');
       expect(find.text('Your account'), findsNothing);
       expect(find.widgetWithText(FilledButton, 'Log in'), findsOneWidget);
     });

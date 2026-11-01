@@ -11,6 +11,7 @@ class User {
     this.admin = false,
     this.enabled = true,
     this.createdAt,
+    this.updatedAt,
   });
 
   factory User.fromJson(Map<String, dynamic> json) => User(
@@ -21,6 +22,7 @@ class User {
         admin: json['admin'] as bool? ?? false,
         enabled: json['enabled'] as bool? ?? true,
         createdAt: json['created_at'] as String?,
+        updatedAt: json['updated_at'] as String?,
       );
 
   final int id;
@@ -30,6 +32,7 @@ class User {
   final bool admin;
   final bool enabled;
   final String? createdAt;
+  final String? updatedAt;
 }
 
 /// What register and login return: a token plus the user it belongs to.

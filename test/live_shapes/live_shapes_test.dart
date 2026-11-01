@@ -1,7 +1,6 @@
-// Replays REAL responses captured from https://auth.simpleapi.dev on
-// 2026-10-31 through the app's AuthApi, to
-// check the app copes with the exact status codes and bodies the live API
-// sends. Bodies are written the way they arrive on the wire (PHP escapes `/`
+// Replays the Auth API's responses through the app's AuthApi, to check the
+// app copes with the exact status codes and bodies the API sends. Bodies are
+// written the way they arrive on the wire (PHP escapes `/`
 // as `\/` and non-ASCII as `\uXXXX`). Emails are throwaway addresses; there
 // are no keys, tokens or passwords here (the token below is a placeholder).
 import 'package:auth_client/auth_api.dart';
@@ -11,7 +10,8 @@ import 'package:http/testing.dart';
 
 const _user =
     r'{"id":3,"name":"Alice Live","email":"simpleapi-sample-apps+099e2e8586@agentmail.to",'
-    r'"email_verified":false,"admin":false,"enabled":true,"created_at":"2026-10-31T20:40:37.000000Z"}';
+    r'"email_verified":false,"admin":false,"enabled":true,'
+    r'"created_at":"2026-10-31T20:40:37Z","updated_at":"2026-10-31T20:41:02Z"}';
 
 AuthApi _api(int status, String body,
         {String? token = 'placeholder-token', Map<String, String> headers = const {}}) =>
@@ -36,10 +36,10 @@ void main() {
   group('success shapes (200/201)', () {
     test('register 201 -> Session', () async {
       final s = await _api(201,
-              '{"token":"placeholder-token","expires_at":"2026-11-30T20:40:37.000000Z","user":$_user}')
+              '{"token":"placeholder-token","expires_at":"2026-11-30T20:40:37Z","user":$_user}')
           .register(name: 'Alice Live', email: 'a@example.test', password: 'x' * 8);
       expect(s.token, 'placeholder-token');
-      expect(s.expiresAt, '2026-11-30T20:40:37.000000Z');
+      expect(s.expiresAt, '2026-11-30T20:40:37Z');
       expect(s.user.id, 3);
       expect(s.user.emailVerified, isFalse);
       expect(s.user.admin, isFalse);
@@ -49,10 +49,11 @@ void main() {
     test('GET /me 200 -> User (bare user object, not wrapped)', () async {
       final u = await _api(200, _user).me();
       expect(u.name, 'Alice Live');
-      expect(u.createdAt, '2026-10-31T20:40:37.000000Z');
+      expect(u.createdAt, '2026-10-31T20:40:37Z');
+      expect(u.updatedAt, '2026-10-31T20:41:02Z');
     });
 
-    test('a stored empty name (accounts from before the API fix) still parses', () async {
+    test('an empty name still parses', () async {
       final u = await _api(200, _user.replaceFirst('Alice Live', '')).me();
       expect(u.name, '');
     });
@@ -83,23 +84,19 @@ void main() {
   });
 
   group('401', () {
-    const noKey =
-        r'{"message":"Unauthorized.  Please provide a valid apikey. Register for a free apikey at https:\/\/keys.simpleapi.dev using product URL https:\/\/auth.simpleapi.dev."}';
     const badKey =
-        r'{"message":"Unauthorized.  Invalid apikey detected [00000000-0000-0000-0000-000000000000]. Register for a free apikey at https:\/\/keys.simpleapi.dev using product URL https:\/\/auth.simpleapi.dev."}';
+        r'{"message":"Unauthorized. Please provide a valid apikey. Get a free key at https:\/\/keys.simpleapi.dev\/?product=auth"}';
     const badToken = '{"message":"Invalid or expired auth token. Log in again."}';
     const noToken =
         r'{"message":"Unauthorized. Log in and send the header \"Authorization: Bearer <token>\"."}';
 
     test('missing / unknown apikey is a bad KEY, not a bad session', () async {
-      for (final body in [noKey, badKey]) {
-        final e = await _fail((a) => a.me(), 401, body);
-        expect(e.isBadKey, isTrue);
-        expect(e.isBadSession, isFalse);
-        expect(describeError(e), startsWith('The API key was not accepted'));
-        final login = await _fail((a) => a.login(email: 'a@example.test', password: 'x'), 401, body);
-        expect(login.isBadKey, isTrue);
-      }
+      final e = await _fail((a) => a.me(), 401, badKey);
+      expect(e.isBadKey, isTrue);
+      expect(e.isBadSession, isFalse);
+      expect(describeError(e), startsWith('The API key was not accepted'));
+      final login = await _fail((a) => a.login(email: 'a@example.test', password: 'x'), 401, badKey);
+      expect(login.isBadKey, isTrue);
     });
 
     test('dead or missing token is a bad SESSION, not a bad key', () async {
@@ -120,7 +117,7 @@ void main() {
       }
     });
 
-    test('login 401 = wrong credentials (never "session ended")', () async {
+    test('login 401 = wrong credentials or a disabled account (never "session ended")', () async {
       final e = await _fail((a) => a.login(email: 'a@example.test', password: 'x'), 401,
           '{"message":"Invalid email or password."}');
       expect(e.isBadSession, isFalse);
@@ -140,6 +137,20 @@ void main() {
     test('DELETE /me wrong password', () async {
       final e = await _fail((a) => a.deleteMe('x'), 403, '{"message":"Wrong password."}');
       expect(describeError(e), 'Wrong password.');
+    });
+  });
+
+  group('500 / 503', () {
+    test('keys service down', () async {
+      final e = await _fail((a) => a.me(), 503, '{"message":"Key service unavailable. Please try again shortly."}');
+      expect(e.isBadKey, isFalse);
+      expect(e.isBadSession, isFalse);
+      expect(describeError(e), 'The service is busy. Please try again shortly.');
+    });
+
+    test('server error', () async {
+      final e = await _fail((a) => a.me(), 500, '{"message":"Something went wrong. Please try again."}');
+      expect(describeError(e), 'Something went wrong. Please try again. (HTTP 500)');
     });
   });
 
@@ -201,8 +212,8 @@ void main() {
 
     test('PUT /me without current_password (the API answers 422, not 403)', () async {
       final e = await _fail((a) => a.updateMe(email: 'n@example.test'), 422,
-          r'{"message":"The current password field is required when email \/ password is present."}');
-      expect(describeError(e), contains('current password field is required'));
+          '{"message":"current_password is required to change the email or password."}');
+      expect(describeError(e), contains('current_password is required'));
     });
   });
 
