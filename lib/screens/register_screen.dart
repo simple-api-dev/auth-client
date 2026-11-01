@@ -70,7 +70,7 @@ class _RegisterScreenState extends State<RegisterScreen> with ActionState {
               ),
               FilledButton(
                 onPressed: busy ? null : _register,
-                child: Text(busy ? 'Creating...' : 'Create account'),
+                child: Text(busy ? 'Registering...' : 'Register'),
               ),
             ],
           ),

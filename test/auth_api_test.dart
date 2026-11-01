@@ -186,7 +186,7 @@ void main() {
     test('register 403 is the user cap, other 403s are not', () async {
       final cap = await _fails(
           (a) => a.register(name: 'n', email: 'e@example.test', password: 'pw-12345678'), 403,
-          {'message': 'Maximum number of users (25) per key has been reached.'});
+          {'message': 'Free tier limit reached: 25 users per key.'});
       expect(cap.isUserCapReached, isTrue);
       final other = await _fails((a) => a.updateMe(name: 'x'), 403, {'message': 'x'}, token: 't');
       expect(other.isUserCapReached, isFalse);
@@ -213,10 +213,10 @@ void main() {
     test('register: duplicate email, full key, validation', () async {
       Future<Object?> reg(AuthApi a) =>
           a.register(name: 'n', email: 'e@example.test', password: 'pw-12345678');
-      expect(describeError(await _fails(reg, 409, {'message': 'That email is already registered.'})),
-          'That email is already registered.');
-      expect(describeError(await _fails(reg, 403, {'message': 'Maximum number of users (25) per key has been reached.'})),
-          'Maximum number of users (25) per key has been reached.');
+      expect(describeError(await _fails(reg, 409, {'message': 'That email is already registered to this key.'})),
+          'That email is already registered to this key.');
+      expect(describeError(await _fails(reg, 403, {'message': 'Free tier limit reached: 25 users per key.'})),
+          'Free tier limit reached: 25 users per key.');
       expect(describeError(await _fails(reg, 422, {'message': 'The email must be a valid email address.'})),
           'The email must be a valid email address.');
     });
@@ -254,7 +254,7 @@ void main() {
     });
 
     test('the general rate limit and a missing item use the shared wording', () async {
-      final limited = await _fails((a) => a.me(), 429, {'message': 'Rate limit exceeded: 60 requests per minute.  Please try again in 31 seconds.'}, token: 't');
+      final limited = await _fails((a) => a.me(), 429, {'message': 'Rate limit exceeded: 60 requests a minute per IP address. Please try again in 31 seconds.'}, token: 't');
       expect(limited.isRateLimited, isTrue);
       expect(describeError(limited), 'Too many requests. Wait a few seconds and try again.');
       final missing = await _fails((a) => a.me(), 404, {'message': 'User not found'}, token: 't');
@@ -266,7 +266,7 @@ void main() {
       final api = AuthApi(apiKey: 'k', client: client);
       await expectLater(
         api.login(email: 'a@example.test', password: 'x'),
-        throwsA(isA<ApiException>().having((e) => describeError(e), 'plain', contains('HTTP 502'))),
+        throwsA(isA<ApiException>().having((e) => describeError(e), 'plain', contains('Something went wrong'))),
       );
     });
 

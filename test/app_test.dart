@@ -182,7 +182,7 @@ void main() {
     await _type(tester, 'Name', 'Test User');
     await _type(tester, 'Email', 'test@example.test');
     await _type(tester, 'Password', 'pw-12345678');
-    await tester.tap(find.widgetWithText(FilledButton, 'Create account'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Register'));
     await tester.pumpAndSettle();
   }
 
@@ -199,7 +199,7 @@ void main() {
     await h.pump(tester);
     await _tapText(tester, 'Forgot password?');
     expect(find.text('Reset password'), findsOneWidget);
-    expect(find.textContaining('6-digit code'), findsOneWidget);
+    expect(find.textContaining('6-digit code'), findsWidgets);
   });
 
   testWidgets('register shows the demo notice', (tester) async {
@@ -211,7 +211,7 @@ void main() {
 
   testWidgets('user cap says the demo is full', (tester) async {
     final h = Harness((_) =>
-        _json(403, {'message': 'Maximum number of users (25) per key has been reached.'}));
+        _json(403, {'message': 'Free tier limit reached: 25 users per key.'}));
     await h.pump(tester);
     await fillRegister(tester);
 
@@ -266,7 +266,7 @@ void main() {
     await _type(tester, 'Name', 'Test User');
     await _type(tester, 'Email', 'test@example.test');
     await _type(tester, 'Password', 'pw-12345678');
-    await tester.tap(find.widgetWithText(FilledButton, 'Create account'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Register'));
     await tester.pumpAndSettle();
 
     final register = h.requests.firstWhere((r) => r.url.path == '/api/users/register');
@@ -282,7 +282,7 @@ void main() {
     await _type(tester, 'Name', 'Test User');
     await _type(tester, 'Email', 'test@example.test');
     await _type(tester, 'Password', 'short');
-    await tester.tap(find.widgetWithText(FilledButton, 'Create account'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Register'));
     await tester.pumpAndSettle();
 
     expect(find.text('At least 8 characters'), findsOneWidget);
@@ -352,7 +352,7 @@ void main() {
       await _tapText(tester, 'Email me a code');
       expect(h.requests.last.url.path, '/api/users/me/email/send-code');
 
-      await _type(tester, 'Code from the email', '482915');
+      await _type(tester, '6-digit code', '482915');
       await _tapText(tester, 'Verify');
       expect(jsonDecode(h.requests.last.body), {'code': '482915'});
       // The verify section disappears once the email is verified.
@@ -433,8 +433,8 @@ void main() {
       await h.pump(tester);
       await _tapText(tester, 'Forgot password?');
       await _type(tester, 'Email', 'Demo@SimpleAPI.dev');
-      await _tapText(tester, 'Send code');
-      await _type(tester, 'Code from the email', '123456');
+      await _tapText(tester, 'Email me a code');
+      await _type(tester, '6-digit code', '123456');
       await _type(tester, 'New password (8 to 72 characters)', 'new-password-1');
       await _tapText(tester, 'Set new password');
       expect(find.text(demoLockedMessage), findsNWidgets(2));
@@ -454,10 +454,10 @@ void main() {
 
     await _tapText(tester, 'Forgot password?');
     await _type(tester, 'Email', 'test@example.test');
-    await _tapText(tester, 'Send code');
+    await _tapText(tester, 'Email me a code');
     expect(h.requests.last.url.path, '/api/users/forgot');
 
-    await _type(tester, 'Code from the email', '123456');
+    await _type(tester, '6-digit code', '123456');
     await _type(tester, 'New password (8 to 72 characters)', 'new-password-1');
     await _tapText(tester, 'Set new password');
     expect(h.requests.last.url.path, '/api/users/reset');

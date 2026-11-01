@@ -46,10 +46,10 @@ class _ProfileSectionState extends State<ProfileSection> with ActionState {
         title: 'Profile',
         subtitle:
             '${app.isDemoUser ? 'Name: ${user.name}\n' : ''}'
-            'Email: ${user.email}  '
+            'Email: ${user.email} '
             '(${user.emailVerified ? 'verified' : 'not verified'})\n'
             'User id: ${user.id}'
-            '${created == null ? '' : '   Created: $created'}',
+            '${created == null ? '' : '\nCreated: $created'}',
         children: [
           if (!app.isDemoUser) ...[
             StatusText(error: error, info: info),
@@ -112,7 +112,7 @@ class _VerifyEmailSectionState extends State<VerifyEmailSection> with ActionStat
             child: const Text('Email me a code'),
           ),
           const SizedBox(height: 12),
-          field(_code, 'Code from the email', keyboard: TextInputType.number, validator: notEmpty),
+          field(_code, '6-digit code', keyboard: TextInputType.number, validator: notEmpty),
           FilledButton(
             onPressed: busy
                 ? null

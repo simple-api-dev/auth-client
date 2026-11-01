@@ -73,7 +73,7 @@ class _SendCodeState extends State<_SendCode> with ActionState {
                       run(() => app.api.forgotPassword(widget.email.text.trim()));
                     }
                   },
-            child: const Text('Send code'),
+            child: const Text('Email me a code'),
           ),
         ],
       ),
@@ -134,7 +134,7 @@ class _SetPasswordState extends State<_SetPassword> with ActionState {
             'Resetting logs out every session.',
         children: [
           StatusText(error: error, info: info),
-          field(_code, 'Code from the email', keyboard: TextInputType.number, validator: notEmpty),
+          field(_code, '6-digit code', keyboard: TextInputType.number, validator: notEmpty),
           field(
             _password,
             'New password (8 to 72 characters)',

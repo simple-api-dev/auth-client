@@ -150,7 +150,7 @@ void main() {
 
     test('server error', () async {
       final e = await _fail((a) => a.me(), 500, '{"message":"Something went wrong. Please try again."}');
-      expect(describeError(e), 'Something went wrong. Please try again. (HTTP 500)');
+      expect(describeError(e), 'Something went wrong. Please try again.');
     });
   });
 
@@ -162,24 +162,24 @@ void main() {
 
     test('empty / non-JSON error body', () async {
       final e = await _fail((a) => a.me(), 405, '');
-      expect(describeError(e), 'Something went wrong (HTTP 405).');
+      expect(describeError(e), 'Something went wrong. Please try again.');
       final h = await _fail((a) => a.me(), 502, '<html>Bad gateway</html>');
-      expect(describeError(h), 'Something went wrong (HTTP 502).');
+      expect(describeError(h), 'Something went wrong. Please try again.');
     });
   });
 
   group('409', () {
-    const msg = '{"message":"That email is already registered."}';
+    const msg = '{"message":"That email is already registered to this key."}';
     test('register duplicate', () async {
       final e = await _fail(
           (a) => a.register(name: 'n', email: 'a@example.test', password: 'x' * 8), 409, msg);
-      expect(describeError(e), 'That email is already registered.');
+      expect(describeError(e), 'That email is already registered to this key.');
     });
 
     test('PUT /me change email to an existing one', () async {
       final e = await _fail(
           (a) => a.updateMe(email: 'a@example.test', currentPassword: 'x'), 409, msg);
-      expect(describeError(e), 'That email is already registered.');
+      expect(describeError(e), 'That email is already registered to this key.');
     });
   });
 
@@ -254,7 +254,7 @@ void main() {
 
     test('general rate limit on login is not shown as a lockout', () async {
       final e = await _fail((a) => a.login(email: 'a@example.test', password: 'x'), 429,
-          '{"message":"Rate limit exceeded: 60 requests per minute.  Please try again in 31 seconds."}',
+          '{"message":"Rate limit exceeded: 60 requests a minute per IP address. Please try again in 31 seconds."}',
           headers: {'retry-after': '31', 'x-ratelimit-remaining': '0'});
       expect(e.isRateLimited, isTrue);
       expect(e.retryAfter, const Duration(seconds: 31));
@@ -263,13 +263,13 @@ void main() {
 
     test('rate limit without a readable Retry-After (browser did not expose it)', () async {
       final e = await _fail((a) => a.me(), 429,
-          '{"message":"Rate limit exceeded: 60 requests per minute.  Please try again in 31 seconds."}');
+          '{"message":"Rate limit exceeded: 60 requests a minute per IP address. Please try again in 31 seconds."}');
       expect(e.retryAfter, isNull);
       expect(describeError(e), 'Too many requests. Wait a few seconds and try again.');
     });
 
     test('garbage Retry-After is ignored', () async {
-      final e = await _fail((a) => a.me(), 429, '{"message":"Rate limit exceeded: 60 requests per minute."}',
+      final e = await _fail((a) => a.me(), 429, '{"message":"Rate limit exceeded: 60 requests a minute per IP address."}',
           headers: {'retry-after': 'Wed, 21 Oct 2026 07:28:00 GMT'});
       expect(e.retryAfter, isNull);
     });

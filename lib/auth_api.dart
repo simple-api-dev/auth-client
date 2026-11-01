@@ -1,7 +1,7 @@
 /// The whole SimpleAPI Auth API client lives in this file.
 ///
 /// Every request goes to https://auth.simpleapi.dev/api/... and carries your
-/// API key as the `apikey` query parameter (not a header). Calls that need a
+/// API key in the `apikey` query string (an `APIKEY` header also works). Calls that need a
 /// logged-in user also send `Authorization: Bearer <token>`. The browser may
 /// call the API directly because the API allows any origin (CORS), so this app
 /// needs no backend of its own.
@@ -78,7 +78,7 @@ String describeError(ApiException e) {
     case 429: // the login lockout and the daily email limit say how long to wait
       if (api.isNotEmpty) return api;
   }
-  return api.isEmpty ? 'Something went wrong (HTTP ${e.statusCode}).' : '$api (HTTP ${e.statusCode})';
+  return api.isEmpty ? 'Something went wrong. Please try again.' : api;
 }
 
 class AuthApi {
@@ -121,7 +121,7 @@ class AuthApi {
   }
 
   /// POST /api/users/forgot
-  /// Emails a 6 digit reset code. Always answers 200 so it cannot reveal
+  /// Emails a 6-digit reset code. Always answers 200 so it cannot reveal
   /// whether the email is registered. Returns the API's message.
   Future<String> forgotPassword(String email) async {
     final json = await _send('POST', '/api/users/forgot', body: {'email': email});
@@ -187,7 +187,7 @@ class AuthApi {
   }
 
   /// POST /api/users/me/email/send-code
-  /// Emails a 6 digit code to verify the user's email address. One email per
+  /// Emails a 6-digit code to verify the user's email address. One email per
   /// minute (429), 409 if already verified.
   Future<String> sendVerificationCode() async {
     final json = await _send('POST', '/api/users/me/email/send-code', auth: true);
